@@ -151,6 +151,12 @@ De app pollt elke 5 seconden voor updates. In `TicketDetail.tsx` wordt lokale fo
 ### Drag & Drop Sorting
 Tickets kunnen handmatig gesorteerd worden via drag & drop in zowel list view als board view. Dit werkt alleen wanneer "Manual" sorting is geselecteerd in de dropdown. De volgorde wordt gepersisteerd via een `order` float in de frontmatter van elke ticket. Bij tussenvoeging wordt het gemiddelde van de buren berekend (bijv. 1.5 tussen 1 en 2). In board view kan je ook tickets tussen kolommen slepen om de status te wijzigen.
 
+### Drag & Drop naar Projecten
+Tickets kunnen naar projecten in de sidebar gesleept worden om ze aan een project toe te wijzen. Sleep naar Inbox om het project te verwijderen. Drop targets krijgen een blauwe highlight tijdens het slepen. De `DragDropContext` staat in `App.tsx` om cross-component drag & drop mogelijk te maken.
+
+### Tag Sortering
+Tags worden altijd alfabetisch gesorteerd. Dit gebeurt in `server/lib/markdown.ts` bij het parsen, aanmaken en updaten van tickets.
+
 ### Tag Kleuren
 Tags krijgen automatisch kleuren op basis van hun naam. De mapping staat in `src/lib/tagColors.ts`:
 
@@ -192,6 +198,8 @@ Tickets kunnen optioneel aan een project gekoppeld worden via het `project` veld
 - Projecten verschijnen in de sidebar met ticket counts
 - Bij aanmaken van een ticket binnen een project-filter wordt dat project automatisch overgenomen
 - Project kan bewerkt worden in de detail view (Enter of blur om op te slaan, Escape om te annuleren)
+- Sleep een ticket naar een project in de sidebar om het toe te wijzen
+- Sleep een ticket naar Inbox om het project te verwijderen
 
 ## Dev Commands
 

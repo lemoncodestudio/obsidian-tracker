@@ -81,7 +81,10 @@ export function Sidebar() {
                   <motion.button
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.99 }}
-                    onClick={() => setSelectedProject(project)}
+                    onClick={() => {
+                      setActiveView('all')
+                      setSelectedProject(project)
+                    }}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
                       selectedProject === project
                         ? 'bg-sidebar-active text-gray-900 font-medium'

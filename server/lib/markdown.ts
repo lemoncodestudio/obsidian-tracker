@@ -69,7 +69,7 @@ export function parseTicketMarkdown(content: string, filename: string): Ticket {
     title,
     status: frontmatter.status || DEFAULT_STATUS,
     priority: frontmatter.priority || DEFAULT_PRIORITY,
-    tags: frontmatter.tags || [],
+    tags: (frontmatter.tags || []).sort(),
     created: formatDateTime(frontmatter.created),
     updated: formatDateTime(frontmatter.updated),
     dueDate: formatOptionalDate(frontmatter.dueDate),
@@ -89,7 +89,7 @@ export function serializeTicketMarkdown(ticket: Partial<Ticket> & { title: strin
     id: ticket.id || generateId(),
     status: ticket.status || DEFAULT_STATUS,
     priority: ticket.priority || DEFAULT_PRIORITY,
-    tags: ticket.tags || [],
+    tags: (ticket.tags || []).sort(),
     created: ticket.created || now,
     updated: now,
   }
@@ -150,7 +150,7 @@ export function updateTicketMarkdown(
 
   if (updates.status !== undefined) newFrontmatter.status = updates.status
   if (updates.priority !== undefined) newFrontmatter.priority = updates.priority
-  if (updates.tags !== undefined) newFrontmatter.tags = updates.tags
+  if (updates.tags !== undefined) newFrontmatter.tags = [...updates.tags].sort()
   if (updates.archivedAt !== undefined) newFrontmatter.archivedAt = updates.archivedAt
   if (updates.dueDate !== undefined) {
     if (updates.dueDate === null) {

@@ -1,4 +1,4 @@
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
+import { Droppable, Draggable } from '@hello-pangea/dnd'
 import { useTicketStore } from '@/stores/ticketStore'
 import { TicketItem } from './TicketItem'
 import { CreateTicket } from './CreateTicket'
@@ -8,7 +8,7 @@ import { SearchBar } from './SearchBar'
 import { SortDropdown } from './SortDropdown'
 
 export function TicketList() {
-  const { getFilteredTickets, isLoading, error, activeView, displayMode, tickets, searchQuery, sortBy, reorderTicket } = useTicketStore()
+  const { getFilteredTickets, isLoading, error, activeView, displayMode, tickets, searchQuery, sortBy } = useTicketStore()
   const filteredTickets = getFilteredTickets()
 
   const viewLabels: Record<string, string> = {
@@ -21,41 +21,6 @@ export function TicketList() {
 
   // For board view, show total count instead of filtered
   const ticketCount = displayMode === 'board' ? tickets.length : filteredTickets.length
-
-  const handleDragEnd = async (result: DropResult) => {
-    const { destination, source, draggableId } = result
-
-    if (!destination) return
-    if (destination.index === source.index) return
-
-    // Calculate new order value
-    const items = [...filteredTickets]
-    const [movedItem] = items.splice(source.index, 1)
-    items.splice(destination.index, 0, movedItem)
-
-    // Calculate the new order value based on neighbors
-    let newOrder: number
-    const prevItem = items[destination.index - 1]
-    const nextItem = items[destination.index + 1]
-
-    if (!prevItem && nextItem) {
-      // Moving to the start
-      newOrder = (nextItem.order ?? 1) - 1
-    } else if (prevItem && !nextItem) {
-      // Moving to the end
-      newOrder = (prevItem.order ?? items.length) + 1
-    } else if (prevItem && nextItem) {
-      // Moving between two items
-      const prevOrder = prevItem.order ?? destination.index - 1
-      const nextOrder = nextItem.order ?? destination.index + 1
-      newOrder = (prevOrder + nextOrder) / 2
-    } else {
-      // Only item
-      newOrder = 1
-    }
-
-    await reorderTicket(draggableId, newOrder)
-  }
 
   const isDragDisabled = sortBy !== 'manual'
 
@@ -98,38 +63,36 @@ export function TicketList() {
               {searchQuery ? 'No tickets match your search' : 'No tickets found'}
             </div>
           ) : (
-            <DragDropContext onDragEnd={handleDragEnd}>
-              <Droppable droppableId="ticket-list">
-                {(provided) => (
-                  <ul
-                    ref={provided.innerRef}
-                    {...provided.droppableProps}
-                    className="divide-y divide-gray-100"
-                  >
-                    {filteredTickets.map((ticket, index) => (
-                      <Draggable
-                        key={ticket.id}
-                        draggableId={ticket.id}
-                        index={index}
-                        isDragDisabled={isDragDisabled}
-                      >
-                        {(provided, snapshot) => (
-                          <li
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            className={`transition-shadow ${snapshot.isDragging ? 'shadow-lg bg-white rounded-lg' : ''}`}
-                          >
-                            <TicketItem ticket={ticket} isDragging={snapshot.isDragging} />
-                          </li>
-                        )}
-                      </Draggable>
-                    ))}
-                    {provided.placeholder}
-                  </ul>
-                )}
-              </Droppable>
-            </DragDropContext>
+            <Droppable droppableId="ticket-list">
+              {(provided) => (
+                <ul
+                  ref={provided.innerRef}
+                  {...provided.droppableProps}
+                  className="divide-y divide-gray-100"
+                >
+                  {filteredTickets.map((ticket, index) => (
+                    <Draggable
+                      key={ticket.id}
+                      draggableId={ticket.id}
+                      index={index}
+                      isDragDisabled={isDragDisabled}
+                    >
+                      {(provided, snapshot) => (
+                        <li
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          {...provided.dragHandleProps}
+                          className={`transition-shadow ${snapshot.isDragging ? 'shadow-lg bg-white rounded-lg' : ''}`}
+                        >
+                          <TicketItem ticket={ticket} isDragging={snapshot.isDragging} />
+                        </li>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                </ul>
+              )}
+            </Droppable>
           )}
         </div>
       )}

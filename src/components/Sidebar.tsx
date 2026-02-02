@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import { Droppable } from '@hello-pangea/dnd'
 import { useTicketStore } from '@/stores/ticketStore'
 import type { ViewType } from '@/types/ticket'
 import { TagFilter } from './TagFilter'
@@ -45,27 +46,63 @@ export function Sidebar() {
         <ul className="space-y-1">
           {views.map((view) => (
             <li key={view.id}>
-              <motion.button
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
-                onClick={() => {
-                  setActiveView(view.id)
-                  setSelectedProject(null)
-                }}
-                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
-                  activeView === view.id && selectedProject === null
-                    ? 'bg-sidebar-active text-gray-900 font-medium'
-                    : 'text-gray-600 hover:bg-sidebar-hover'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <span>{view.icon}</span>
-                  <span>{view.label}</span>
-                </span>
-                {counts[view.id] > 0 && (
-                  <span className="text-xs text-gray-400">{counts[view.id]}</span>
-                )}
-              </motion.button>
+              {view.id === 'inbox' ? (
+                <Droppable droppableId="view:inbox">
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                    >
+                      <motion.button
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
+                        onClick={() => {
+                          setActiveView(view.id)
+                          setSelectedProject(null)
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
+                          snapshot.isDraggingOver
+                            ? 'bg-blue-100 ring-2 ring-blue-400'
+                            : activeView === view.id && selectedProject === null
+                            ? 'bg-sidebar-active text-gray-900 font-medium'
+                            : 'text-gray-600 hover:bg-sidebar-hover'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span>{view.icon}</span>
+                          <span>{view.label}</span>
+                        </span>
+                        {counts[view.id] > 0 && (
+                          <span className="text-xs text-gray-400">{counts[view.id]}</span>
+                        )}
+                      </motion.button>
+                      <div className="hidden">{provided.placeholder}</div>
+                    </div>
+                  )}
+                </Droppable>
+              ) : (
+                <motion.button
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  onClick={() => {
+                    setActiveView(view.id)
+                    setSelectedProject(null)
+                  }}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
+                    activeView === view.id && selectedProject === null
+                      ? 'bg-sidebar-active text-gray-900 font-medium'
+                      : 'text-gray-600 hover:bg-sidebar-hover'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span>{view.icon}</span>
+                    <span>{view.label}</span>
+                  </span>
+                  {counts[view.id] > 0 && (
+                    <span className="text-xs text-gray-400">{counts[view.id]}</span>
+                  )}
+                </motion.button>
+              )}
             </li>
           ))}
         </ul>
@@ -77,30 +114,42 @@ export function Sidebar() {
             </h3>
             <ul className="space-y-1">
               {projects.map((project) => (
-                <li key={project}>
-                  <motion.button
-                    whileHover={{ scale: 1.01 }}
-                    whileTap={{ scale: 0.99 }}
-                    onClick={() => {
-                      setActiveView('all')
-                      setSelectedProject(project)
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
-                      selectedProject === project
-                        ? 'bg-sidebar-active text-gray-900 font-medium'
-                        : 'text-gray-600 hover:bg-sidebar-hover'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2">
-                      <span className="text-gray-400">#</span>
-                      <span className="truncate">{project}</span>
-                    </span>
-                    {projectCounts[project] > 0 && (
-                      <span className="text-xs text-gray-400">{projectCounts[project]}</span>
-                    )}
-                  </motion.button>
-                </li>
-              ))}
+              <li key={project}>
+                <Droppable droppableId={`project:${project}`}>
+                  {(provided, snapshot) => (
+                    <div
+                      ref={provided.innerRef}
+                      {...provided.droppableProps}
+                    >
+                      <motion.button
+                        whileHover={{ scale: 1.01 }}
+                        whileTap={{ scale: 0.99 }}
+                        onClick={() => {
+                          setActiveView('all')
+                          setSelectedProject(project)
+                        }}
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
+                          snapshot.isDraggingOver
+                            ? 'bg-blue-100 ring-2 ring-blue-400'
+                            : selectedProject === project
+                            ? 'bg-sidebar-active text-gray-900 font-medium'
+                            : 'text-gray-600 hover:bg-sidebar-hover'
+                        }`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="text-gray-400">#</span>
+                          <span className="truncate">{project}</span>
+                        </span>
+                        {projectCounts[project] > 0 && (
+                          <span className="text-xs text-gray-400">{projectCounts[project]}</span>
+                        )}
+                      </motion.button>
+                      <div className="hidden">{provided.placeholder}</div>
+                    </div>
+                  )}
+                </Droppable>
+              </li>
+            ))}
             </ul>
           </div>
         )}

@@ -1,4 +1,4 @@
-import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
+import { Droppable, Draggable } from '@hello-pangea/dnd'
 import { useTicketStore } from '@/stores/ticketStore'
 import { getTagClasses } from '@/lib/tagColors'
 import type { Ticket, TicketStatus } from '@/types/ticket'
@@ -55,7 +55,7 @@ function formatRelativeTime(dateString: string): string {
 }
 
 export function BoardView() {
-  const { tickets, selectedTags, selectedProject, searchQuery, updateTicket, reorderTicket, selectTicket, selectedTicketId, sortBy } = useTicketStore()
+  const { tickets, selectedTags, selectedProject, searchQuery, selectTicket, selectedTicketId, sortBy } = useTicketStore()
 
   // Filter by search query, tags, and project
   let filteredTickets = tickets
@@ -101,60 +101,8 @@ export function BoardView() {
     return statusTickets.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority])
   }
 
-  const handleDragEnd = async (result: DropResult) => {
-    const { destination, source, draggableId } = result
-
-    if (!destination) return
-
-    const newStatus = destination.droppableId as TicketStatus
-    const oldStatus = source.droppableId as TicketStatus
-    const ticket = tickets.find((t) => t.id === draggableId)
-
-    if (!ticket) return
-
-    // Get the tickets in the destination column
-    const destTickets = getTicketsByStatus(newStatus)
-
-    // If we're moving within the same column, we need to filter out the moved ticket
-    const filteredDestTickets = oldStatus === newStatus
-      ? destTickets.filter(t => t.id !== draggableId)
-      : destTickets
-
-    // Calculate new order value based on destination position
-    let newOrder: number
-    const destIndex = destination.index
-    const prevItem = filteredDestTickets[destIndex - 1]
-    const nextItem = filteredDestTickets[destIndex]
-
-    if (!prevItem && !nextItem) {
-      // Only item in column
-      newOrder = 1
-    } else if (!prevItem && nextItem) {
-      // Moving to the start
-      newOrder = (nextItem.order ?? 1) - 1
-    } else if (prevItem && !nextItem) {
-      // Moving to the end
-      newOrder = (prevItem.order ?? filteredDestTickets.length) + 1
-    } else if (prevItem && nextItem) {
-      // Moving between two items
-      const prevOrder = prevItem.order ?? destIndex - 1
-      const nextOrder = nextItem.order ?? destIndex + 1
-      newOrder = (prevOrder + nextOrder) / 2
-    } else {
-      newOrder = destIndex + 1
-    }
-
-    // Update status and/or order
-    if (ticket.status !== newStatus) {
-      await updateTicket(draggableId, { status: newStatus, order: newOrder })
-    } else if (source.index !== destination.index) {
-      await reorderTicket(draggableId, newOrder)
-    }
-  }
-
   return (
-    <DragDropContext onDragEnd={handleDragEnd}>
-      <div className="flex-1 flex gap-4 p-4 overflow-x-auto">
+    <div className="flex-1 flex gap-4 p-4 overflow-x-auto">
         {columns.map((column) => (
           <div key={column.id} className="flex-1 min-w-[280px] max-w-[400px] flex flex-col">
             <div className={`px-3 py-2 rounded-t-lg ${column.color}`}>
@@ -240,7 +188,6 @@ export function BoardView() {
             </Droppable>
           </div>
         ))}
-      </div>
-    </DragDropContext>
+    </div>
   )
 }

@@ -17,7 +17,7 @@ export function Sidebar() {
 
   const getCounts = () => ({
     all: tickets.length,
-    inbox: tickets.filter((t) => t.status === 'todo' && t.priority === 'urgent').length,
+    inbox: tickets.filter((t) => !t.project && t.status !== 'done').length,
     today: tickets.filter((t) => t.status === 'in-progress').length,
     backlog: tickets.filter((t) => t.status === 'todo').length,
     done: tickets.filter((t) => t.status === 'done').length,

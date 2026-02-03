@@ -236,7 +236,7 @@ export function Sidebar() {
         {currentProjects.length > 0 && (
           <div className="mt-6">
             <h3 className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-              {mode === 'tickets' ? 'Projects' : 'Folders'}
+              {mode === 'tickets' ? 'Projects' : 'Labels'}
             </h3>
             <ul className="space-y-1">
               {currentProjects.map((project) => (

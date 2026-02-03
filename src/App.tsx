@@ -1,7 +1,7 @@
 import { DragDropContext, DropResult } from '@hello-pangea/dnd'
 import { Sidebar } from './components/Sidebar'
 import { TicketList } from './components/TicketList'
-import { TicketDetail } from './components/TicketDetail'
+import { DetailPanel } from './components/DetailPanel'
 import { TodoList } from './components/TodoList'
 import { CreateTodoModal } from './components/CreateTodo'
 import { useTickets } from './hooks/useTickets'
@@ -125,14 +125,8 @@ function App() {
     <DragDropContext onDragEnd={handleDragEnd}>
       <div className="flex h-screen bg-white">
         <Sidebar />
-        {mode === 'tickets' ? (
-          <>
-            <TicketList />
-            <TicketDetail />
-          </>
-        ) : (
-          <TodoList />
-        )}
+        {mode === 'tickets' ? <TicketList /> : <TodoList />}
+        <DetailPanel />
       </div>
       <CreateTodoModal />
     </DragDropContext>

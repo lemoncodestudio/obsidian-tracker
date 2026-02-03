@@ -136,24 +136,46 @@ export function TodoItem({ todo, showSubtasks = true, allTodos = [] }: TodoItemP
               </span>
             </div>
 
+            {/* Description (truncated) */}
+            {todo.description && (
+              <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
+                {todo.description.length > 80
+                  ? todo.description.slice(0, 80) + '…'
+                  : todo.description}
+              </p>
+            )}
+
             {/* Metadata row */}
             <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {/* Label (project/folder) - hide "geen" */}
+              {todo.project && todo.project !== 'geen' && (
+                <span className="text-xs text-gray-400 flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
+                  {todo.project}
+                </span>
+              )}
+
               {/* Due date */}
               {todo.dueDate && (
-                <span className={`text-xs flex items-center gap-1 ${
-                  overdue ? 'text-red-600 font-medium' : dueSoon ? 'text-orange-600' : 'text-gray-400'
-                }`}>
-                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  {formatDueDate(todo.dueDate)}
-                </span>
+                <>
+                  {todo.project && todo.project !== 'geen' && <span className="text-gray-300">·</span>}
+                  <span className={`text-xs flex items-center gap-1 ${
+                    overdue ? 'text-red-600 font-medium' : dueSoon ? 'text-orange-600' : 'text-gray-400'
+                  }`}>
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    {formatDueDate(todo.dueDate)}
+                  </span>
+                </>
               )}
 
               {/* Tags */}
               {todo.tags && todo.tags.length > 0 && (
                 <>
-                  {todo.dueDate && <span className="text-gray-300">·</span>}
+                  {((todo.project && todo.project !== 'geen') || todo.dueDate) && <span className="text-gray-300">·</span>}
                   <div className="flex gap-1">
                     {todo.tags.slice(0, 3).map((tag) => (
                       <span
@@ -171,10 +193,12 @@ export function TodoItem({ todo, showSubtasks = true, allTodos = [] }: TodoItemP
               )}
 
               {/* File link */}
-              <span className="text-gray-300">·</span>
+              {((todo.project && todo.project !== 'geen') || todo.dueDate || (todo.tags && todo.tags.length > 0)) && (
+                <span className="text-gray-300">·</span>
+              )}
               <button
                 onClick={handleOpenInObsidian}
-                className="text-xs text-gray-400 hover:text-blue-500 flex items-center gap-1 transition-colors"
+                className="text-xs text-blue-500 hover:text-blue-600 flex items-center gap-1 transition-colors"
                 title={`Open ${todo.fileName} in Obsidian`}
               >
                 <span className="truncate max-w-32">{todo.fileName}</span>

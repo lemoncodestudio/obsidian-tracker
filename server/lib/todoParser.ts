@@ -90,13 +90,22 @@ interface ProjectInfo {
   projectPath?: string
 }
 
+function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\s+/g, '-')      // spaces to dashes
+    .replace(/[^\w-]/g, '')    // remove non-word chars except dashes
+    .replace(/--+/g, '-')      // collapse multiple dashes
+    .replace(/^-|-$/g, '')     // trim leading/trailing dashes
+}
+
 function deriveProjectInfo(filePath: string, vaultPath: string): ProjectInfo {
   const relativePath = path.relative(vaultPath, filePath)
   const parts = relativePath.split(path.sep)
 
-  // If file is in root or only has filename, no project
+  // If file is in root or only has filename, use "geen" label
   if (parts.length <= 1) {
-    return {}
+    return { project: 'geen' }
   }
 
   // Remove filename, keep only folders
@@ -105,14 +114,16 @@ function deriveProjectInfo(filePath: string, vaultPath: string): ProjectInfo {
   // Filter out PARA top-level categories to get meaningful project name
   const meaningful = folders.filter(f => !PARA_CATEGORIES.includes(f.toLowerCase()))
 
+  // No meaningful folders (only PARA categories), use "geen" label
   if (meaningful.length === 0) {
-    return {}
+    return { project: 'geen', projectPath: folders.join('/') }
   }
 
-  // Use last meaningful folder as project display name
+  // Use first 2 meaningful folders as label (slugified, joined by /)
   // projectPath is full folder path (for file operations)
+  const labelParts = meaningful.slice(0, 2).map(slugify)
   return {
-    project: meaningful[meaningful.length - 1],
+    project: labelParts.join('/'),
     projectPath: folders.join('/'),
   }
 }
@@ -122,6 +133,7 @@ interface ParsedTodoLine {
   rawText: string
   completed: boolean
   lineNumber: number
+  description?: string
 }
 
 function parseTodosFromContent(
@@ -143,6 +155,9 @@ function parseTodosFromContent(
   let inCodeBlock = false
   let inFrontmatter = false
   let frontmatterCount = 0
+
+  // Track which lines are valid content (not frontmatter, not code blocks)
+  const validLines: { lineNumber: number; line: string; inCodeBlock: boolean }[] = []
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]
@@ -170,9 +185,14 @@ function parseTodosFromContent(
     }
     if (inCodeBlock) continue
 
+    validLines.push({ lineNumber, line, inCodeBlock })
+
     // Check for unchecked todo
     const uncheckedMatch = line.match(TODO_UNCHECKED)
     if (uncheckedMatch) {
+      const rawText = uncheckedMatch[2].trim()
+      // Skip empty todos
+      if (!rawText) continue
       parsedLines.push({
         indent: uncheckedMatch[1],
         rawText: uncheckedMatch[2],
@@ -185,12 +205,60 @@ function parseTodosFromContent(
     // Check for checked todo
     const checkedMatch = line.match(TODO_CHECKED)
     if (checkedMatch) {
+      const rawText = checkedMatch[2].trim()
+      // Skip empty todos
+      if (!rawText) continue
       parsedLines.push({
         indent: checkedMatch[1],
         rawText: checkedMatch[2],
         completed: true,
         lineNumber,
       })
+    }
+  }
+
+  // Second pass: collect description lines for each todo
+  for (const parsedLine of parsedLines) {
+    const todoIndentLevel = getIndentLevel(parsedLine.indent)
+    const descriptionLines: string[] = []
+
+    // Find the index in validLines where this todo is
+    const todoValidIndex = validLines.findIndex(v => v.lineNumber === parsedLine.lineNumber)
+    if (todoValidIndex === -1) continue
+
+    // Look at subsequent lines
+    for (let i = todoValidIndex + 1; i < validLines.length; i++) {
+      const nextLine = validLines[i].line
+
+      // Skip empty lines but continue looking
+      if (nextLine.trim() === '') {
+        // If we already have description lines, empty line ends the description
+        if (descriptionLines.length > 0) break
+        continue
+      }
+
+      // Check if this is a checkbox (another todo) - stop collecting
+      if (TODO_UNCHECKED.test(nextLine) || TODO_CHECKED.test(nextLine)) {
+        break
+      }
+
+      // Get the indentation of this line
+      const lineIndentMatch = nextLine.match(/^(\s*)/)
+      const lineIndent = lineIndentMatch ? lineIndentMatch[1] : ''
+      const lineIndentLevel = getIndentLevel(lineIndent)
+
+      // Description lines must be MORE indented than the todo
+      if (lineIndentLevel <= todoIndentLevel) {
+        break
+      }
+
+      // This is a description line - remove the base indentation
+      const trimmedLine = nextLine.trim()
+      descriptionLines.push(trimmedLine)
+    }
+
+    if (descriptionLines.length > 0) {
+      parsedLine.description = descriptionLines.join('\n')
     }
   }
 
@@ -226,6 +294,7 @@ function parseTodosFromContent(
       id,
       text: cleanText,
       rawText: parsedLine.rawText,
+      description: parsedLine.description,
       completed: parsedLine.completed,
       filePath: relativePath,
       fileName: fileNameWithoutExt,
@@ -308,10 +377,47 @@ export async function getTodoProjects(vaultPath: string): Promise<string[]> {
   return Array.from(projects).sort()
 }
 
-export async function updateTodoCompletion(
+export function getTodoById(todos: Todo[], id: string): Todo | undefined {
+  return todos.find(t => t.id === id)
+}
+
+interface TodoUpdateData {
+  text?: string
+  description?: string | null
+  completed?: boolean
+  dueDate?: string | null
+  priority?: TodoPriority | null
+  tags?: string[]
+}
+
+function formatTodoLine(
+  text: string,
+  completed: boolean,
+  indent: string,
+  tags?: string[],
+  priority?: TodoPriority | null,
+  dueDate?: string | null
+): string {
+  const checkbox = completed ? '- [x]' : '- [ ]'
+  let line = `${indent}${checkbox} ${text}`
+
+  if (tags && tags.length > 0) {
+    line += ` ${tags.map(t => `#${t}`).join(' ')}`
+  }
+  if (priority) {
+    line += ` !${priority}`
+  }
+  if (dueDate) {
+    line += ` (${dueDate})`
+  }
+
+  return line
+}
+
+export async function updateTodo(
   vaultPath: string,
   todoId: string,
-  completed: boolean
+  data: TodoUpdateData
 ): Promise<Todo | null> {
   // First, find the todo to get its file path and line number
   const todos = await scanVaultForTodos(vaultPath)
@@ -330,33 +436,71 @@ export async function updateTodoCompletion(
     throw new Error('Line number out of range')
   }
 
-  const line = lines[lineIndex]
-  let newLine: string
+  // Get the current line's indentation
+  const currentLine = lines[lineIndex]
+  const indentMatch = currentLine.match(/^(\s*)/)
+  const indent = indentMatch ? indentMatch[1] : ''
 
-  if (completed) {
-    // Change [ ] to [x]
-    newLine = line.replace(/- \[ \]/, '- [x]')
-  } else {
-    // Change [x] to [ ]
-    newLine = line.replace(/- \[[xX]\]/, '- [ ]')
-  }
+  // Determine new values (use existing if not provided)
+  const newText = data.text !== undefined ? data.text : todo.text
+  const newCompleted = data.completed !== undefined ? data.completed : todo.completed
+  const newTags = data.tags !== undefined ? data.tags : todo.tags
+  const newPriority = data.priority !== undefined ? data.priority : todo.priority
+  const newDueDate = data.dueDate !== undefined ? data.dueDate : todo.dueDate
 
-  if (newLine === line) {
-    throw new Error('Could not find checkbox to update')
-  }
-
+  // Format the new todo line
+  const newLine = formatTodoLine(newText, newCompleted, indent, newTags, newPriority, newDueDate)
   lines[lineIndex] = newLine
+
+  // Handle description update
+  // First, find and remove existing description lines
+  const todoIndentLevel = indent.replace(/\t/g, '  ').length / 2
+  let descEndIndex = lineIndex + 1
+
+  while (descEndIndex < lines.length) {
+    const nextLine = lines[descEndIndex]
+
+    // Empty line ends description
+    if (nextLine.trim() === '') {
+      break
+    }
+
+    // Checkbox ends description
+    if (TODO_UNCHECKED.test(nextLine) || TODO_CHECKED.test(nextLine)) {
+      break
+    }
+
+    // Check indentation
+    const nextIndentMatch = nextLine.match(/^(\s*)/)
+    const nextIndent = nextIndentMatch ? nextIndentMatch[1] : ''
+    const nextIndentLevel = nextIndent.replace(/\t/g, '  ').length / 2
+
+    // Less or equal indentation ends description
+    if (nextIndentLevel <= todoIndentLevel) {
+      break
+    }
+
+    descEndIndex++
+  }
+
+  // Remove old description lines
+  const descriptionLineCount = descEndIndex - lineIndex - 1
+  if (descriptionLineCount > 0) {
+    lines.splice(lineIndex + 1, descriptionLineCount)
+  }
+
+  // Add new description lines if provided
+  if (data.description !== undefined && data.description !== null && data.description.trim()) {
+    const descIndent = indent + '  ' // 2 spaces more than todo
+    const descLines = data.description.split('\n').map(line => descIndent + line.trim())
+    lines.splice(lineIndex + 1, 0, ...descLines)
+  }
+
   await fs.writeFile(fullPath, lines.join('\n'), 'utf-8')
 
-  // Return updated todo
-  return {
-    ...todo,
-    completed,
-  }
-}
-
-export function getTodoById(todos: Todo[], id: string): Todo | undefined {
-  return todos.find(t => t.id === id)
+  // Re-scan to get the updated todo with correct data
+  const updatedTodos = await scanVaultForTodos(vaultPath)
+  return updatedTodos.find(t => t.id === todoId) || null
 }
 
 export async function getTodoProjectPaths(vaultPath: string): Promise<string[]> {

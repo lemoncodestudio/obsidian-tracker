@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Ticket, TicketCreate, TicketUpdate, ViewType, DisplayMode, SortOption } from '@/types/ticket'
-import type { Todo, TodoViewType, TodoCreate } from '@/types/todo'
+import type { Todo, TodoViewType, TodoCreate, TodoUpdate } from '@/types/todo'
 import { api } from '@/lib/api'
 
 export type AppMode = 'tickets' | 'todos'
@@ -66,6 +66,7 @@ interface TicketState {
   fetchTodoProjects: () => Promise<void>
   fetchTodoProjectPaths: () => Promise<void>
   createTodo: (data: TodoCreate) => Promise<Todo>
+  updateTodo: (id: string, data: TodoUpdate) => Promise<void>
   toggleTodo: (id: string) => Promise<void>
   selectTodo: (id: string | null) => void
   setActiveTodoView: (view: TodoViewType) => void
@@ -340,6 +341,39 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     const todo = await api.createTodo(data)
     set((state) => ({ todos: [todo, ...state.todos] }))
     return todo
+  },
+
+  updateTodo: async (id: string, data: TodoUpdate) => {
+    const { todos } = get()
+    const todo = todos.find(t => t.id === id)
+    if (!todo) return
+
+    // Optimistic update - convert null to undefined for Todo type compatibility
+    const previousTodos = todos
+    const optimisticData: Partial<Todo> = {}
+    if (data.text !== undefined) optimisticData.text = data.text
+    if (data.description !== undefined) optimisticData.description = data.description === null ? undefined : data.description
+    if (data.completed !== undefined) optimisticData.completed = data.completed
+    if (data.dueDate !== undefined) optimisticData.dueDate = data.dueDate === null ? undefined : data.dueDate
+    if (data.priority !== undefined) optimisticData.priority = data.priority === null ? undefined : data.priority
+    if (data.tags !== undefined) optimisticData.tags = data.tags
+
+    set((state) => ({
+      todos: state.todos.map((t) =>
+        t.id === id ? { ...t, ...optimisticData } : t
+      ),
+    }))
+
+    try {
+      const updated = await api.updateTodo(id, data)
+      set((state) => ({
+        todos: state.todos.map((t) => (t.id === id ? updated : t)),
+      }))
+    } catch (error) {
+      // Rollback on error
+      set({ todos: previousTodos })
+      throw error
+    }
   },
 
   toggleTodo: async (id: string) => {

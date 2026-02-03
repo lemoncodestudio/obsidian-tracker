@@ -4,7 +4,7 @@ import {
   scanVaultForTodos,
   getTodoProjects,
   getTodoProjectPaths,
-  updateTodoCompletion,
+  updateTodo,
   createTodo,
 } from '../lib/todoParser'
 
@@ -48,17 +48,20 @@ router.post('/', async (req, res) => {
   }
 })
 
-// PUT /api/todos/:id - Toggle todo completion
+// PUT /api/todos/:id - Update todo
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params
-    const { completed } = req.body
+    const { text, description, completed, dueDate, priority, tags } = req.body
 
-    if (typeof completed !== 'boolean') {
-      return res.status(400).json({ message: 'completed field is required and must be a boolean' })
-    }
-
-    const updatedTodo = await updateTodoCompletion(VAULT_PATH, id, completed)
+    const updatedTodo = await updateTodo(VAULT_PATH, id, {
+      text,
+      description,
+      completed,
+      dueDate,
+      priority,
+      tags,
+    })
 
     if (!updatedTodo) {
       return res.status(404).json({ message: 'Todo not found' })

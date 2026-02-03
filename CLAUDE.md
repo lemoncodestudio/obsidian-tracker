@@ -62,7 +62,7 @@ Frontend draait op http://localhost:5173, backend op http://localhost:3001.
 │   │   ├── ModeToggle.tsx  # Switch tussen Tickets/Todos modes
 │   │   ├── TicketList.tsx  # Hoofd ticket lijst
 │   │   ├── TicketItem.tsx  # Enkele ticket row
-│   │   ├── TicketDetail.tsx # Detail panel (slide-over)
+│   │   ├── DetailPanel.tsx # Gedeeld detail panel voor tickets en todos (slide-over)
 │   │   ├── BoardView.tsx   # Kanban board view
 │   │   ├── CreateTicket.tsx # Quick-add form
 │   │   ├── TodoList.tsx    # Todo lijst component
@@ -152,7 +152,7 @@ Uitleg van wat er moet gebeuren.
 |--------|----------|--------------|
 | GET | `/api/todos` | Lijst alle todos uit vault |
 | PUT | `/api/todos/:id` | Toggle todo completion |
-| GET | `/api/todos/projects` | Lijst unieke folders met todos |
+| GET | `/api/todos/projects` | Lijst unieke labels met todos |
 
 ## Keyboard Shortcuts
 
@@ -201,7 +201,7 @@ De Zustand store (`ticketStore.ts`) beheert:
 
 ### Todo State
 - `todos` - Alle geladen todos
-- `todoProjects` - Unieke folders met todos
+- `todoProjects` - Unieke labels met todos
 - `selectedTodoId` - Huidig geselecteerde todo
 - `activeTodoView` - all/today/upcoming/someday/done
 - `selectedTodoProject` - Actief folder filter
@@ -222,7 +222,7 @@ Let op: `undefined` values mogen niet in frontmatter objects - YAML kan deze nie
 `created` en `updated` worden opgeslagen als ISO 8601 timestamps (bijv. `2026-02-02T14:30:00.000Z`). In de UI wordt `updated` getoond als relatieve tijd ("2m ago", "1h ago", "yesterday", etc.) via de `formatRelativeTime()` helper in TicketItem en BoardView.
 
 ### Polling en Lokale State
-De app pollt elke 5 seconden voor updates. In `TicketDetail.tsx` wordt lokale form state (title, description, project, etc.) alleen gereset bij verandering van `selectedTicketId`, niet bij elke ticket update. Dit voorkomt dat de state wordt overschreven terwijl de gebruiker aan het typen is.
+De app pollt elke 5 seconden voor updates. In `DetailPanel.tsx` wordt lokale form state (title, description, project, etc.) alleen gereset bij verandering van `selectedTicketId`, niet bij elke ticket update. Dit voorkomt dat de state wordt overschreven terwijl de gebruiker aan het typen is.
 
 ### Drag & Drop Sorting
 Tickets kunnen handmatig gesorteerd worden via drag & drop in zowel list view als board view. Dit werkt alleen wanneer "Manual" sorting is geselecteerd in de dropdown. De volgorde wordt gepersisteerd via een `order` float in de frontmatter van elke ticket. Bij tussenvoeging wordt het gemiddelde van de buren berekend (bijv. 1.5 tussen 1 en 2). In board view kan je ook tickets tussen kolommen slepen om de status te wijzigen.
@@ -357,12 +357,20 @@ Geneste todos worden bepaald door indentatie:
 
 Subtasks worden visueel ingesprongen weergegeven onder hun parent.
 
-### Todo Projecten
-Anders dan tickets worden todo projecten afgeleid van de folder structuur. Een todo in `werk/meetings.md` krijgt project "werk".
+### Todo Labels
+Todo labels worden afgeleid van de eerste 2 meaningful folders (na PARA categorieën zoals `areas/`, `projects/`). Elke folder wordt geslugified (lowercase, spaties naar dashes) en samengevoegd met `/`.
+
+Voorbeelden:
+- `areas/huis/daily.md` → label "huis"
+- `areas/huis/zolder/offerte.md` → label "huis/zolder"
+- `areas/werk/inviplay/notes/transcript.md` → label "werk/inviplay"
+- `areas/werk/trigion/daily.md` → label "werk/trigion"
+- `projects/Inviplay App 2.0/tasks.md` → label "inviplay-app-2.0"
 
 ### Obsidian Deeplinks
 Click op de bestandsnaam naast een todo om de note in Obsidian te openen via deeplink. De vault naam is momenteel hardcoded als "inviplay" in:
 - `src/components/TodoItem.tsx`
+- `src/components/DetailPanel.tsx`
 - `src/hooks/useKeyboard.ts`
 
 ### Todo Parser Details

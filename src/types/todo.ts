@@ -5,6 +5,7 @@ export interface Todo {
   id: string              // Hash of filepath + line number
   text: string            // Todo text without checkbox and metadata
   rawText: string         // Original text (for editing)
+  description?: string    // Indented text directly below the todo
   completed: boolean      // [ ] vs [x]
   filePath: string        // Relative path to note
   fileName: string        // Note name (without .md)
@@ -20,7 +21,12 @@ export interface Todo {
 }
 
 export interface TodoUpdate {
+  text?: string
+  description?: string | null
   completed?: boolean
+  dueDate?: string | null
+  priority?: TodoPriority | null
+  tags?: string[]
 }
 
 export interface TodoCreate {

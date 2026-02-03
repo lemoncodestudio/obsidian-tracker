@@ -1,6 +1,39 @@
-# Obsidian Ticket Tracker
+# Obsidian Tracker
 
-Een minimale, Things-geïnspireerde ticket management webapp die een Obsidian vault als database gebruikt.
+Een minimale, Things-geïnspireerde tracker webapp die een Obsidian vault als database gebruikt.
+
+## Twee Modes
+
+| Mode | Bron | Beschrijving |
+|------|------|--------------|
+| **Tickets** | `{VAULT_PATH}/{project}/backlog/*.md` | Gestructureerde tickets met YAML frontmatter |
+| **Todos** | Alle `*.md` in vault (behalve backlog folders) | Inline `- [ ]` items met metadata parsing |
+
+Switch tussen modes met `m` toets of via de toggle in de sidebar.
+
+## Vault Structuur
+
+De vault bevat project folders in de root. Elk project kan optioneel een `backlog/` folder hebben voor tickets.
+
+```
+vault/
+├── inviplay/              # Project folder
+│   ├── backlog/           # Tickets voor dit project
+│   │   ├── archive/       # Gearchiveerde tickets
+│   │   └── *.md           # Ticket files
+│   ├── meetings/          # Andere folders (worden gescand voor todos)
+│   └── notes/
+├── trigion/               # Ander project
+│   ├── backlog/
+│   └── docs/
+└── personal/              # Project zonder backlog (alleen todos)
+    └── *.md
+```
+
+- **Projecten met backlogs** worden automatisch gedetecteerd en verschijnen in de backlog switcher
+- **Tickets** worden geladen uit `{project}/backlog/*.md`
+- **Archive** staat binnen de backlog: `{project}/backlog/archive/`
+- **Todos** worden gescand uit alle project folders, behalve `backlog/` subfolders
 
 ## Quick Start
 
@@ -25,32 +58,38 @@ Frontend draait op http://localhost:5173, backend op http://localhost:3001.
 ```
 ├── src/                    # Frontend
 │   ├── components/         # React components
-│   │   ├── Sidebar.tsx     # Navigatie sidebar
+│   │   ├── Sidebar.tsx     # Navigatie sidebar + mode toggle
+│   │   ├── ModeToggle.tsx  # Switch tussen Tickets/Todos modes
 │   │   ├── TicketList.tsx  # Hoofd ticket lijst
 │   │   ├── TicketItem.tsx  # Enkele ticket row
 │   │   ├── TicketDetail.tsx # Detail panel (slide-over)
 │   │   ├── BoardView.tsx   # Kanban board view
 │   │   ├── CreateTicket.tsx # Quick-add form
+│   │   ├── TodoList.tsx    # Todo lijst component
+│   │   ├── TodoItem.tsx    # Enkele todo row met subtasks
 │   │   ├── SearchBar.tsx   # Zoekbalk met Cmd+K
 │   │   ├── SortDropdown.tsx # Sorteer opties
 │   │   ├── ViewToggle.tsx  # List/Board toggle
 │   │   └── TagFilter.tsx   # Tag filtering
 │   ├── hooks/
-│   │   ├── useTickets.ts   # Data fetching + polling
+│   │   ├── useTickets.ts   # Data fetching + polling (tickets & todos)
 │   │   └── useKeyboard.ts  # Keyboard shortcuts
 │   ├── stores/
 │   │   └── ticketStore.ts  # Zustand state management
 │   ├── types/
-│   │   └── ticket.ts       # TypeScript types
+│   │   ├── ticket.ts       # Ticket TypeScript types
+│   │   └── todo.ts         # Todo TypeScript types
 │   └── lib/
 │       ├── api.ts          # REST API client
 │       └── tagColors.ts    # Tag kleur configuratie
 ├── server/                 # Backend
 │   ├── index.ts            # Express server entry
 │   ├── routes/
-│   │   └── tickets.ts      # REST API routes
+│   │   ├── tickets.ts      # Ticket REST API routes
+│   │   └── todos.ts        # Todo REST API routes
 │   └── lib/
 │       ├── markdown.ts     # Markdown + frontmatter parsing
+│       ├── todoParser.ts   # Todo extractie uit markdown files
 │       └── watcher.ts      # File system watcher
 └── vault/                  # Default vault (dev only)
     └── backlog/            # Ticket markdown files
@@ -64,7 +103,7 @@ De vault path wordt geconfigureerd via `.env`:
 VAULT_PATH=/Users/lennert/Documents/Obsidian/inviplay
 ```
 
-Tickets worden gelezen uit `{VAULT_PATH}/backlog/*.md`.
+De vault path wijst naar de root folder die project subfolders bevat. Tickets worden gelezen uit `{VAULT_PATH}/{project}/backlog/*.md` voor elk project dat een backlog folder heeft.
 
 ## Ticket Markdown Format
 
@@ -96,33 +135,62 @@ Uitleg van wat er moet gebeuren.
 
 ## API Endpoints
 
+### Tickets
 | Method | Endpoint | Beschrijving |
 |--------|----------|--------------|
-| GET | `/api/tickets` | Lijst alle tickets |
+| GET | `/api/tickets/backlogs` | Lijst alle vault projecten met backlogs |
+| GET | `/api/tickets?backlog=X` | Lijst tickets voor specifieke backlog |
 | GET | `/api/tickets/:id` | Enkel ticket |
-| POST | `/api/tickets` | Nieuw ticket aanmaken |
+| POST | `/api/tickets` | Nieuw ticket aanmaken (vereist `backlog` in body) |
 | PUT | `/api/tickets/:id` | Ticket updaten |
-| DELETE | `/api/tickets/:id` | Ticket verwijderen |
-| GET | `/api/tags` | Lijst unieke tags |
-| GET | `/api/projects` | Lijst unieke projecten |
+| DELETE | `/api/tickets/:id` | Ticket verwijderen (archiveert in `{backlog}/backlog/archive/`) |
+| GET | `/api/tags?backlog=X` | Lijst unieke tags (optioneel per backlog) |
+| GET | `/api/projects?backlog=X` | Lijst unieke projecten (optioneel per backlog) |
+
+### Todos
+| Method | Endpoint | Beschrijving |
+|--------|----------|--------------|
+| GET | `/api/todos` | Lijst alle todos uit vault |
+| PUT | `/api/todos/:id` | Toggle todo completion |
+| GET | `/api/todos/projects` | Lijst unieke folders met todos |
 
 ## Keyboard Shortcuts
 
+### Globaal
+| Toets | Actie |
+|-------|-------|
+| `m` | Switch tussen Tickets en Todos mode |
+| `⌘K` | Focus zoekbalk |
+| `Escape` | Sluit detail panel / clear search |
+
+### Ticket Mode
 | Toets | Actie |
 |-------|-------|
 | `n` | Nieuwe ticket (focust input, switcht naar list view indien nodig) |
 | `j` / `↓` | Volgende ticket |
 | `k` / `↑` | Vorige ticket |
 | `v` | Toggle list/board view |
-| `⌘K` | Focus zoekbalk |
-| `Escape` | Sluit detail panel / clear search |
+
+### Todo Mode
+| Toets | Actie |
+|-------|-------|
+| `j` / `↓` | Volgende todo |
+| `k` / `↑` | Vorige todo |
+| `o` | Open geselecteerde todo in Obsidian |
 
 ## State Management
 
 De Zustand store (`ticketStore.ts`) beheert:
-- `tickets` - Alle geladen tickets
+
+### Mode
+- `mode` - 'tickets' of 'todos'
+
+### Ticket State
+- `backlogs` - Beschikbare vault projecten met backlogs
+- `selectedBacklog` - Huidig geselecteerde backlog (null = geen)
+- `tickets` - Alle geladen tickets voor geselecteerde backlog
 - `tags` - Unieke tags voor filtering
-- `projects` - Unieke projectnamen
+- `projects` - Unieke projectnamen binnen tickets
 - `selectedTicketId` - Huidig geselecteerde ticket
 - `activeView` - all/inbox/today/backlog/done
 - `displayMode` - list/board
@@ -130,6 +198,14 @@ De Zustand store (`ticketStore.ts`) beheert:
 - `sortBy` - Sorteer optie (manual/priority/updated/created/title/dueDate)
 - `selectedTags` - Actieve tag filters
 - `selectedProject` - Actief project filter (null = alle, "" = loose tickets)
+
+### Todo State
+- `todos` - Alle geladen todos
+- `todoProjects` - Unieke folders met todos
+- `selectedTodoId` - Huidig geselecteerde todo
+- `activeTodoView` - all/today/upcoming/someday/done
+- `selectedTodoProject` - Actief folder filter
+- `todoSearchQuery` - Zoekterm voor todos
 
 ## Belangrijke Patronen
 
@@ -177,19 +253,32 @@ Tags krijgen automatisch kleuren op basis van hun naam. De mapping staat in `src
 
 Onbekende tags krijgen een neutrale grijze kleur. Nieuwe tags kunnen worden toegevoegd in `tagColors.ts`.
 
-### Filtering
+### Filtering (Tickets)
 Zowel list view als board view ondersteunen filtering op:
 - Zoekterm (titel, beschrijving, tags)
 - Tags (via sidebar)
 - Project (via sidebar)
 
+### Filtering (Todos)
+Todo mode ondersteunt filtering op:
+- Zoekterm (tekst, bestandsnaam, tags)
+- Folder/project (via sidebar)
+
 ## Views
 
+### Ticket Views
 - **All Tickets** - Alle tickets
 - **Inbox** - Tickets zonder project (nog te triagen)
 - **In Progress** - Tickets met status "in-progress"
 - **Backlog** - Alle todo tickets
 - **Done** - Afgeronde tickets
+
+### Todo Views
+- **All Todos** - Alle open todos
+- **Today** - Todos die vandaag of eerder due zijn
+- **Upcoming** - Todos die binnen 7 dagen due zijn
+- **Someday** - Todos zonder due date
+- **Done** - Afgeronde todos
 
 ## Projects
 
@@ -200,6 +289,89 @@ Tickets kunnen optioneel aan een project gekoppeld worden via het `project` veld
 - Project kan bewerkt worden in de detail view (Enter of blur om op te slaan, Escape om te annuleren)
 - Sleep een ticket naar een project in de sidebar om het toe te wijzen
 - Sleep een ticket naar Inbox om het project te verwijderen
+
+## Todo Mode
+
+De app heeft twee modes: Tickets en Todos. Todo mode scant alle `- [ ]` items uit de hele Obsidian vault.
+
+### Todo Data Model
+
+```typescript
+interface Todo {
+  id: string              // Hash van filepath + line number
+  text: string            // Todo tekst zonder checkbox en metadata
+  rawText: string         // Originele tekst
+  completed: boolean      // [ ] vs [x]
+  filePath: string        // Relatief pad naar note
+  fileName: string        // Note naam (zonder .md)
+  lineNumber: number      // Regel in bestand
+  indentLevel: number     // 0 = top-level, 1+ = genest
+  parentId?: string       // ID van parent todo (voor subtasks)
+  project?: string        // Afgeleid van folder structuur
+  dueDate?: string        // Geparsed uit (YYYY-MM-DD)
+  priority?: 'low' | 'medium' | 'high' | 'urgent'
+  tags?: string[]         // Inline #tags
+  created?: string        // File mtime als fallback
+}
+```
+
+### Todo Bronnen
+Todos worden gescand uit alle `.md` files in de vault, behalve:
+- `.obsidian/`
+- `templates/`
+- `archive/`
+- `backlog/` (tickets, op elk niveau)
+- `node_modules/`
+- `.git/`
+- `.trash/`
+
+Todos worden project-overstijgend geladen. Het `project` veld van een todo wordt afgeleid van de eerste folder in het pad (bijv. `inviplay/meetings/standup.md` -> project "inviplay").
+
+### Todo Inline Metadata
+Todos kunnen metadata bevatten in de regel zelf:
+
+```markdown
+- [ ] Bel Marc #werk !high (2026-02-03)
+```
+
+Wordt geparsed als:
+- **text**: "Bel Marc"
+- **tags**: ["werk"]
+- **priority**: "high"
+- **dueDate**: "2026-02-03"
+
+Ondersteunde patterns:
+- **Dates**: `(YYYY-MM-DD)` - ISO formaat tussen haakjes
+- **Priority**: `!urgent`, `!high`, `!medium`, `!low`
+- **Tags**: `#tag-naam`
+
+### Subtask Hierarchie
+Geneste todos worden bepaald door indentatie:
+
+```markdown
+- [ ] Hoofdtaak
+  - [ ] Subtaak 1
+    - [ ] Sub-subtaak
+  - [ ] Subtaak 2
+```
+
+Subtasks worden visueel ingesprongen weergegeven onder hun parent.
+
+### Todo Projecten
+Anders dan tickets worden todo projecten afgeleid van de folder structuur. Een todo in `werk/meetings.md` krijgt project "werk".
+
+### Obsidian Deeplinks
+Click op de bestandsnaam naast een todo om de note in Obsidian te openen via deeplink. De vault naam is momenteel hardcoded als "inviplay" in:
+- `src/components/TodoItem.tsx`
+- `src/hooks/useKeyboard.ts`
+
+### Todo Parser Details
+De parser in `server/lib/todoParser.ts`:
+- Skipt code blocks (``` ... ```)
+- Skipt YAML frontmatter (--- ... ---)
+- Herkent indentatie (2 spaties of 1 tab = 1 level)
+- Genereert unieke ID's via MD5 hash van filepath + line number
+- Sorteert tags alfabetisch
 
 ## Dev Commands
 

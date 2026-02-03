@@ -2,6 +2,8 @@ import { DragDropContext, DropResult } from '@hello-pangea/dnd'
 import { Sidebar } from './components/Sidebar'
 import { TicketList } from './components/TicketList'
 import { TicketDetail } from './components/TicketDetail'
+import { TodoList } from './components/TodoList'
+import { CreateTodoModal } from './components/CreateTodo'
 import { useTickets } from './hooks/useTickets'
 import { useKeyboard } from './hooks/useKeyboard'
 import { useTicketStore } from './stores/ticketStore'
@@ -11,9 +13,12 @@ function App() {
   useTickets()
   useKeyboard()
 
-  const { tickets, updateTicket, reorderTicket, getFilteredTickets, sortBy } = useTicketStore()
+  const { mode, tickets, updateTicket, reorderTicket, getFilteredTickets, sortBy } = useTicketStore()
 
   const handleDragEnd = async (result: DropResult) => {
+    // Only handle drag and drop in tickets mode
+    if (mode !== 'tickets') return
+
     const { destination, source, draggableId } = result
 
     if (!destination) return
@@ -120,9 +125,16 @@ function App() {
     <DragDropContext onDragEnd={handleDragEnd}>
       <div className="flex h-screen bg-white">
         <Sidebar />
-        <TicketList />
-        <TicketDetail />
+        {mode === 'tickets' ? (
+          <>
+            <TicketList />
+            <TicketDetail />
+          </>
+        ) : (
+          <TodoList />
+        )}
       </div>
+      <CreateTodoModal />
     </DragDropContext>
   )
 }

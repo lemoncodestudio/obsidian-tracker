@@ -1,8 +1,17 @@
 import { create } from 'zustand'
 import type { Ticket, TicketCreate, TicketUpdate, ViewType, DisplayMode, SortOption } from '@/types/ticket'
+import type { Todo, TodoViewType, TodoCreate } from '@/types/todo'
 import { api } from '@/lib/api'
 
+export type AppMode = 'tickets' | 'todos'
+
 interface TicketState {
+  // Mode
+  mode: AppMode
+
+  // Ticket state
+  backlogs: string[]              // Available vault projects with backlogs
+  selectedBacklog: string | null  // Currently selected backlog (null = none selected)
   tickets: Ticket[]
   tags: string[]
   projects: string[]
@@ -16,7 +25,26 @@ interface TicketState {
   isLoading: boolean
   error: string | null
 
-  // Actions
+  // Todo state
+  todos: Todo[]
+  todoProjects: string[]
+  todoProjectPaths: string[]
+  todoTags: string[]
+  selectedTodoTags: string[]
+  selectedTodoId: string | null
+  activeTodoView: TodoViewType
+  selectedTodoProject: string | null
+  todoSearchQuery: string
+  isTodosLoading: boolean
+  todosError: string | null
+  isCreateTodoOpen: boolean
+
+  // Mode actions
+  setMode: (mode: AppMode) => void
+
+  // Ticket actions
+  fetchBacklogs: () => Promise<void>
+  setSelectedBacklog: (backlog: string | null) => void
   fetchTickets: () => Promise<void>
   fetchTags: () => Promise<void>
   fetchProjects: () => Promise<void>
@@ -33,11 +61,32 @@ interface TicketState {
   setSelectedProject: (project: string | null) => void
   reorderTicket: (ticketId: string, newOrder: number) => Promise<void>
 
+  // Todo actions
+  fetchTodos: () => Promise<void>
+  fetchTodoProjects: () => Promise<void>
+  fetchTodoProjectPaths: () => Promise<void>
+  createTodo: (data: TodoCreate) => Promise<Todo>
+  toggleTodo: (id: string) => Promise<void>
+  selectTodo: (id: string | null) => void
+  setActiveTodoView: (view: TodoViewType) => void
+  setTodoSearchQuery: (query: string) => void
+  setSelectedTodoProject: (project: string | null) => void
+  toggleTodoTag: (tag: string) => void
+  clearSelectedTodoTags: () => void
+  setCreateTodoOpen: (open: boolean) => void
+
   // Computed
   getFilteredTickets: () => Ticket[]
+  getFilteredTodos: () => Todo[]
 }
 
 export const useTicketStore = create<TicketState>((set, get) => ({
+  // Mode
+  mode: 'tickets',
+
+  // Ticket state
+  backlogs: [],
+  selectedBacklog: null,
   tickets: [],
   tags: [],
   projects: [],
@@ -51,10 +100,61 @@ export const useTicketStore = create<TicketState>((set, get) => ({
   isLoading: false,
   error: null,
 
+  // Todo state
+  todos: [],
+  todoProjects: [],
+  todoProjectPaths: [],
+  todoTags: [],
+  selectedTodoTags: [],
+  selectedTodoId: null,
+  activeTodoView: 'all',
+  selectedTodoProject: null,
+  todoSearchQuery: '',
+  isTodosLoading: false,
+  todosError: null,
+  isCreateTodoOpen: false,
+
+  // Mode actions
+  setMode: (mode: AppMode) => {
+    set({ mode, selectedTicketId: null, selectedTodoId: null })
+  },
+
+  // Ticket actions
+  fetchBacklogs: async () => {
+    try {
+      const backlogs = await api.getBacklogs()
+      const { selectedBacklog } = get()
+      // Auto-select first backlog if none selected and backlogs available
+      if (backlogs.length > 0 && !selectedBacklog) {
+        set({ backlogs, selectedBacklog: backlogs[0] })
+      } else {
+        set({ backlogs })
+      }
+    } catch (error) {
+      console.error('Failed to fetch backlogs:', error)
+    }
+  },
+
+  setSelectedBacklog: (backlog: string | null) => {
+    set({
+      selectedBacklog: backlog,
+      // Reset ticket-specific state when switching backlogs
+      selectedTicketId: null,
+      selectedProject: null,
+      selectedTags: [],
+      searchQuery: '',
+    })
+  },
+
   fetchTickets: async () => {
+    const { selectedBacklog } = get()
+    if (!selectedBacklog) {
+      set({ tickets: [], isLoading: false })
+      return
+    }
     set({ isLoading: true, error: null })
     try {
-      const tickets = await api.getTickets()
+      const tickets = await api.getTickets(selectedBacklog)
       set({ tickets, isLoading: false })
     } catch (error) {
       set({ error: (error as Error).message, isLoading: false })
@@ -62,8 +162,13 @@ export const useTicketStore = create<TicketState>((set, get) => ({
   },
 
   fetchTags: async () => {
+    const { selectedBacklog } = get()
+    if (!selectedBacklog) {
+      set({ tags: [] })
+      return
+    }
     try {
-      const tags = await api.getTags()
+      const tags = await api.getTags(selectedBacklog)
       set({ tags })
     } catch (error) {
       console.error('Failed to fetch tags:', error)
@@ -71,8 +176,13 @@ export const useTicketStore = create<TicketState>((set, get) => ({
   },
 
   fetchProjects: async () => {
+    const { selectedBacklog } = get()
+    if (!selectedBacklog) {
+      set({ projects: [] })
+      return
+    }
     try {
-      const projects = await api.getProjects()
+      const projects = await api.getProjects(selectedBacklog)
       set({ projects })
     } catch (error) {
       console.error('Failed to fetch projects:', error)
@@ -80,7 +190,11 @@ export const useTicketStore = create<TicketState>((set, get) => ({
   },
 
   createTicket: async (data: TicketCreate) => {
-    const ticket = await api.createTicket(data)
+    const { selectedBacklog } = get()
+    if (!selectedBacklog) {
+      throw new Error('No backlog selected')
+    }
+    const ticket = await api.createTicket({ ...data, backlog: selectedBacklog })
     set((state) => ({ tickets: [ticket, ...state.tickets] }))
     return ticket
   },
@@ -181,6 +295,108 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     }
   },
 
+  // Todo actions
+  fetchTodos: async () => {
+    set({ isTodosLoading: true, todosError: null })
+    try {
+      const todos = await api.getTodos()
+      // Derive unique tags from todos
+      const tagSet = new Set<string>()
+      todos.forEach(t => t.tags?.forEach(tag => tagSet.add(tag)))
+      const todoTags = Array.from(tagSet).sort()
+      // Derive unique projects from todos (only those with todos)
+      const projectSet = new Set<string>()
+      todos.forEach(t => { if (t.project) projectSet.add(t.project) })
+      const todoProjects = Array.from(projectSet).sort()
+      // Derive unique project paths from todos (for create form dropdown)
+      const pathSet = new Set<string>()
+      todos.forEach(t => { if (t.projectPath) pathSet.add(t.projectPath) })
+      const todoProjectPaths = Array.from(pathSet).sort()
+      set({ todos, todoTags, todoProjects, todoProjectPaths, isTodosLoading: false })
+    } catch (error) {
+      set({ todosError: (error as Error).message, isTodosLoading: false })
+    }
+  },
+
+  fetchTodoProjects: async () => {
+    try {
+      const todoProjects = await api.getTodoProjects()
+      set({ todoProjects })
+    } catch (error) {
+      console.error('Failed to fetch todo projects:', error)
+    }
+  },
+
+  fetchTodoProjectPaths: async () => {
+    try {
+      const todoProjectPaths = await api.getTodoProjectPaths()
+      set({ todoProjectPaths })
+    } catch (error) {
+      console.error('Failed to fetch todo project paths:', error)
+    }
+  },
+
+  createTodo: async (data: TodoCreate) => {
+    const todo = await api.createTodo(data)
+    set((state) => ({ todos: [todo, ...state.todos] }))
+    return todo
+  },
+
+  toggleTodo: async (id: string) => {
+    const { todos } = get()
+    const todo = todos.find(t => t.id === id)
+    if (!todo) return
+
+    // Optimistic update
+    const previousTodos = todos
+    set((state) => ({
+      todos: state.todos.map((t) =>
+        t.id === id ? { ...t, completed: !t.completed } : t
+      ),
+    }))
+
+    try {
+      await api.updateTodo(id, { completed: !todo.completed })
+    } catch (error) {
+      // Rollback on error
+      set({ todos: previousTodos })
+      throw error
+    }
+  },
+
+  selectTodo: (id: string | null) => {
+    set({ selectedTodoId: id })
+  },
+
+  setActiveTodoView: (view: TodoViewType) => {
+    set({ activeTodoView: view, selectedTodoId: null })
+  },
+
+  setTodoSearchQuery: (query: string) => {
+    set({ todoSearchQuery: query })
+  },
+
+  setSelectedTodoProject: (project: string | null) => {
+    set({ selectedTodoProject: project })
+  },
+
+  toggleTodoTag: (tag: string) => {
+    set((state) => ({
+      selectedTodoTags: state.selectedTodoTags.includes(tag)
+        ? state.selectedTodoTags.filter((t) => t !== tag)
+        : [...state.selectedTodoTags, tag],
+    }))
+  },
+
+  clearSelectedTodoTags: () => {
+    set({ selectedTodoTags: [] })
+  },
+
+  setCreateTodoOpen: (open: boolean) => {
+    set({ isCreateTodoOpen: open })
+  },
+
+  // Computed
   getFilteredTickets: () => {
     const { tickets, activeView, selectedTags, selectedProject, searchQuery, sortBy } = get()
 
@@ -260,6 +476,109 @@ export const useTicketStore = create<TicketState>((set, get) => ({
         default:
           return 0
       }
+    })
+  },
+
+  getFilteredTodos: () => {
+    const { todos, activeTodoView, selectedTodoProject, todoSearchQuery, selectedTodoTags } = get()
+
+    // Parse date string as local date to avoid timezone issues
+    const parseLocalDate = (dateStr: string): Date => {
+      const [year, month, day] = dateStr.split('-').map(Number)
+      return new Date(year, month - 1, day)
+    }
+
+    // Get today's date for comparison
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    // Calculate date 7 days from now for upcoming
+    const upcoming = new Date(today)
+    upcoming.setDate(upcoming.getDate() + 7)
+
+    let filtered = todos
+
+    // Filter by search query
+    if (todoSearchQuery.trim()) {
+      const query = todoSearchQuery.toLowerCase()
+      filtered = filtered.filter((t) =>
+        t.text.toLowerCase().includes(query) ||
+        t.fileName.toLowerCase().includes(query) ||
+        t.tags?.some((tag) => tag.toLowerCase().includes(query))
+      )
+    }
+
+    // Filter by view
+    switch (activeTodoView) {
+      case 'today':
+        // Due today or overdue (and not completed)
+        filtered = filtered.filter((t) => {
+          if (t.completed) return false
+          if (!t.dueDate) return false
+          const dueDate = parseLocalDate(t.dueDate)
+          return dueDate <= today
+        })
+        break
+      case 'upcoming':
+        // Due within 7 days (not today, not overdue, not completed)
+        filtered = filtered.filter((t) => {
+          if (t.completed) return false
+          if (!t.dueDate) return false
+          const dueDate = parseLocalDate(t.dueDate)
+          return dueDate > today && dueDate <= upcoming
+        })
+        break
+      case 'someday':
+        // No due date and not completed
+        filtered = filtered.filter((t) => !t.completed && !t.dueDate)
+        break
+      case 'done':
+        filtered = filtered.filter((t) => t.completed)
+        break
+      case 'all':
+      default:
+        // Show all open todos by default
+        filtered = filtered.filter((t) => !t.completed)
+        break
+    }
+
+    // Filter by project
+    if (selectedTodoProject !== null) {
+      if (selectedTodoProject === '') {
+        // Show todos without a project (root level files)
+        filtered = filtered.filter((t) => !t.project)
+      } else {
+        filtered = filtered.filter((t) => t.project === selectedTodoProject)
+      }
+    }
+
+    // Filter by tags
+    if (selectedTodoTags.length > 0) {
+      filtered = filtered.filter((t) => selectedTodoTags.some((tag) => t.tags?.includes(tag)))
+    }
+
+    // Sort: priority first, then due date, then created
+    const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3, undefined: 4 }
+    return filtered.sort((a, b) => {
+      // First by priority
+      const aPriority = priorityOrder[a.priority ?? 'undefined']
+      const bPriority = priorityOrder[b.priority ?? 'undefined']
+      if (aPriority !== bPriority) return aPriority - bPriority
+
+      // Then by due date (earlier first, no due date last)
+      if (a.dueDate && b.dueDate) {
+        const dateDiff = new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+        if (dateDiff !== 0) return dateDiff
+      } else if (a.dueDate && !b.dueDate) {
+        return -1
+      } else if (!a.dueDate && b.dueDate) {
+        return 1
+      }
+
+      // Then by file name and line number for consistent ordering
+      const fileCompare = a.filePath.localeCompare(b.filePath)
+      if (fileCompare !== 0) return fileCompare
+      return a.lineNumber - b.lineNumber
     })
   },
 }))

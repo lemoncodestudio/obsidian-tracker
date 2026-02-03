@@ -17,6 +17,7 @@ export interface Ticket {
   acceptanceCriteria?: string[]
   body: string
   order?: number
+  backlog: string  // vault project the ticket belongs to
 }
 
 export interface TicketCreate {
@@ -29,6 +30,7 @@ export interface TicketCreate {
   source?: string
   description?: string
   acceptanceCriteria?: string[]
+  backlog?: string  // added by store from selectedBacklog
 }
 
 export interface TicketUpdate {

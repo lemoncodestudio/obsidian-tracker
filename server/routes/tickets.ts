@@ -13,53 +13,147 @@ const router = Router()
 
 // Configurable vault path - defaults to a test directory in the project
 const VAULT_PATH = process.env.VAULT_PATH || path.join(process.cwd(), 'vault')
-const BACKLOG_PATH = path.join(VAULT_PATH, 'backlog')
-const ARCHIVE_PATH = path.join(VAULT_PATH, 'archive')
 
-async function ensureDirectories(): Promise<void> {
-  await fs.mkdir(BACKLOG_PATH, { recursive: true })
-  await fs.mkdir(ARCHIVE_PATH, { recursive: true })
+// Directories that are never vault projects
+const EXCLUDED_DIRS = ['.obsidian', 'templates', 'node_modules', '.git', '.trash']
+
+// Get backlog and archive paths for a specific vault project
+function getBacklogPath(vaultProject: string): string {
+  return path.join(VAULT_PATH, vaultProject, 'backlog')
 }
 
-async function findTicketFile(id: string): Promise<string | null> {
-  const files = await fs.readdir(BACKLOG_PATH)
-  const mdFiles = files.filter((f) => f.endsWith('.md'))
+function getArchivePath(vaultProject: string): string {
+  return path.join(VAULT_PATH, vaultProject, 'backlog', 'archive')
+}
 
-  for (const filename of mdFiles) {
-    const filepath = path.join(BACKLOG_PATH, filename)
-    const content = await fs.readFile(filepath, 'utf-8')
-    const ticket = parseTicketMarkdown(content, filename)
-    if (ticket.id === id) {
-      return filename
+// Discover all vault projects that have a backlog folder (recursive)
+async function getVaultProjectsWithBacklogs(): Promise<string[]> {
+  const projects: string[] = []
+
+  async function scanForBacklogs(dirPath: string, relativePath: string = ''): Promise<void> {
+    const entries = await fs.readdir(dirPath, { withFileTypes: true })
+
+    for (const entry of entries) {
+      if (!entry.isDirectory() || EXCLUDED_DIRS.includes(entry.name)) {
+        continue
+      }
+
+      const fullPath = path.join(dirPath, entry.name)
+      const entryRelPath = relativePath ? path.join(relativePath, entry.name) : entry.name
+
+      // Check for backlog subfolder
+      const backlogPath = path.join(fullPath, 'backlog')
+      try {
+        const stat = await fs.stat(backlogPath)
+        if (stat.isDirectory()) {
+          projects.push(entryRelPath)
+        }
+      } catch {
+        // No backlog folder
+      }
+
+      // Recursively scan deeper (except inside backlog folders)
+      if (entry.name !== 'backlog') {
+        await scanForBacklogs(fullPath, entryRelPath)
+      }
+    }
+  }
+
+  try {
+    await scanForBacklogs(VAULT_PATH)
+  } catch (error) {
+    console.error('Error discovering vault projects:', error)
+  }
+
+  return projects.sort()
+}
+
+async function ensureDirectories(vaultProject: string): Promise<void> {
+  await fs.mkdir(getBacklogPath(vaultProject), { recursive: true })
+  await fs.mkdir(getArchivePath(vaultProject), { recursive: true })
+}
+
+// Find ticket file across all backlogs, returns { filename, vaultProject } or null
+async function findTicketFile(id: string, vaultProject?: string): Promise<{ filename: string; vaultProject: string } | null> {
+  const projectsToSearch = vaultProject
+    ? [vaultProject]
+    : await getVaultProjectsWithBacklogs()
+
+  for (const project of projectsToSearch) {
+    const backlogPath = getBacklogPath(project)
+    try {
+      const files = await fs.readdir(backlogPath)
+      const mdFiles = files.filter((f) => f.endsWith('.md'))
+
+      for (const filename of mdFiles) {
+        const filepath = path.join(backlogPath, filename)
+        const content = await fs.readFile(filepath, 'utf-8')
+        const ticket = parseTicketMarkdown(content, filename, project)
+        if (ticket.id === id) {
+          return { filename, vaultProject: project }
+        }
+      }
+    } catch {
+      // Backlog doesn't exist, continue
     }
   }
   return null
 }
 
-// GET /api/tickets - List all tickets
-router.get('/', async (_req: Request, res: Response) => {
+// GET /api/backlogs - List all vault projects that have backlogs
+router.get('/backlogs', async (_req: Request, res: Response) => {
   try {
-    await ensureDirectories()
+    const projects = await getVaultProjectsWithBacklogs()
+    res.json(projects)
+  } catch (error) {
+    console.error('Error listing backlogs:', error)
+    res.status(500).json({ message: 'Failed to list backlogs' })
+  }
+})
 
-    const files = await fs.readdir(BACKLOG_PATH)
-    const mdFiles = files.filter((f) => f.endsWith('.md'))
+// GET /api/tickets - List all tickets (optionally filtered by backlog)
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    const vaultProject = req.query.backlog as string | undefined
 
-    const tickets = await Promise.all(
-      mdFiles.map(async (filename) => {
-        const filepath = path.join(BACKLOG_PATH, filename)
-        const content = await fs.readFile(filepath, 'utf-8')
+    // If backlog specified, only load from that backlog
+    // Otherwise load from all backlogs
+    const projectsToLoad = vaultProject
+      ? [vaultProject]
+      : await getVaultProjectsWithBacklogs()
 
-        // Migrate files without frontmatter
-        const { content: migratedContent, hadFrontmatter } = ensureFrontmatter(content)
-        if (!hadFrontmatter) {
-          await fs.writeFile(filepath, migratedContent, 'utf-8')
-        }
+    const allTickets = []
 
-        return parseTicketMarkdown(migratedContent, filename)
-      })
-    )
+    for (const project of projectsToLoad) {
+      await ensureDirectories(project)
+      const backlogPath = getBacklogPath(project)
 
-    res.json(tickets)
+      try {
+        const files = await fs.readdir(backlogPath)
+        const mdFiles = files.filter((f) => f.endsWith('.md'))
+
+        const tickets = await Promise.all(
+          mdFiles.map(async (filename) => {
+            const filepath = path.join(backlogPath, filename)
+            const content = await fs.readFile(filepath, 'utf-8')
+
+            // Migrate files without frontmatter
+            const { content: migratedContent, hadFrontmatter } = ensureFrontmatter(content)
+            if (!hadFrontmatter) {
+              await fs.writeFile(filepath, migratedContent, 'utf-8')
+            }
+
+            return parseTicketMarkdown(migratedContent, filename, project)
+          })
+        )
+
+        allTickets.push(...tickets)
+      } catch {
+        // Backlog doesn't exist, skip
+      }
+    }
+
+    res.json(allTickets)
   } catch (error) {
     console.error('Error listing tickets:', error)
     res.status(500).json({ message: 'Failed to list tickets' })
@@ -69,15 +163,16 @@ router.get('/', async (_req: Request, res: Response) => {
 // GET /api/tickets/:id - Get single ticket
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const filename = await findTicketFile(req.params.id)
-    if (!filename) {
+    const result = await findTicketFile(req.params.id)
+    if (!result) {
       res.status(404).json({ message: 'Ticket not found' })
       return
     }
-    const filepath = path.join(BACKLOG_PATH, filename)
+    const { filename, vaultProject } = result
+    const filepath = path.join(getBacklogPath(vaultProject), filename)
 
     const content = await fs.readFile(filepath, 'utf-8')
-    const ticket = parseTicketMarkdown(content, filename)
+    const ticket = parseTicketMarkdown(content, filename, vaultProject)
 
     res.json(ticket)
   } catch (error) {
@@ -89,14 +184,20 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST /api/tickets - Create new ticket
 router.post('/', async (req: Request, res: Response) => {
   try {
-    await ensureDirectories()
-
-    const { title, status, priority, tags, project, source, description, acceptanceCriteria } = req.body
+    const { title, status, priority, tags, project, source, description, acceptanceCriteria, backlog } = req.body
 
     if (!title || typeof title !== 'string') {
       res.status(400).json({ message: 'Title is required' })
       return
     }
+
+    if (!backlog || typeof backlog !== 'string') {
+      res.status(400).json({ message: 'Backlog is required' })
+      return
+    }
+
+    await ensureDirectories(backlog)
+    const backlogPath = getBacklogPath(backlog)
 
     const baseFilename = generateFilename(title)
     let filename = baseFilename
@@ -105,7 +206,7 @@ router.post('/', async (req: Request, res: Response) => {
     // Ensure unique filename
     while (true) {
       try {
-        await fs.access(path.join(BACKLOG_PATH, filename))
+        await fs.access(path.join(backlogPath, filename))
         filename = baseFilename.replace('.md', `-${counter}.md`)
         counter++
       } catch {
@@ -124,10 +225,10 @@ router.post('/', async (req: Request, res: Response) => {
       acceptanceCriteria,
     })
 
-    const filepath = path.join(BACKLOG_PATH, filename)
+    const filepath = path.join(backlogPath, filename)
     await fs.writeFile(filepath, content, 'utf-8')
 
-    const ticket = parseTicketMarkdown(content, filename)
+    const ticket = parseTicketMarkdown(content, filename, backlog)
     res.status(201).json(ticket)
   } catch (error) {
     console.error('Error creating ticket:', error)
@@ -138,19 +239,20 @@ router.post('/', async (req: Request, res: Response) => {
 // PUT /api/tickets/:id - Update ticket
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const filename = await findTicketFile(req.params.id)
-    if (!filename) {
+    const result = await findTicketFile(req.params.id)
+    if (!result) {
       res.status(404).json({ message: 'Ticket not found' })
       return
     }
-    const filepath = path.join(BACKLOG_PATH, filename)
+    const { filename, vaultProject } = result
+    const filepath = path.join(getBacklogPath(vaultProject), filename)
 
     const existingContent = await fs.readFile(filepath, 'utf-8')
     const updatedContent = updateTicketMarkdown(existingContent, req.body)
 
     await fs.writeFile(filepath, updatedContent, 'utf-8')
 
-    const ticket = parseTicketMarkdown(updatedContent, filename)
+    const ticket = parseTicketMarkdown(updatedContent, filename, vaultProject)
     res.json(ticket)
   } catch (error) {
     console.error('Error updating ticket:', error)
@@ -158,19 +260,20 @@ router.put('/:id', async (req: Request, res: Response) => {
   }
 })
 
-// DELETE /api/tickets/:id - Archive ticket (move to archive folder)
+// DELETE /api/tickets/:id - Archive ticket (move to archive folder within same backlog)
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    await ensureDirectories()
-
-    const filename = await findTicketFile(req.params.id)
-    if (!filename) {
+    const result = await findTicketFile(req.params.id)
+    if (!result) {
       res.status(404).json({ message: 'Ticket not found' })
       return
     }
+    const { filename, vaultProject } = result
 
-    const sourcePath = path.join(BACKLOG_PATH, filename)
-    const destPath = path.join(ARCHIVE_PATH, filename)
+    await ensureDirectories(vaultProject)
+
+    const sourcePath = path.join(getBacklogPath(vaultProject), filename)
+    const destPath = path.join(getArchivePath(vaultProject), filename)
 
     // Read and update content with archivedAt
     const content = await fs.readFile(sourcePath, 'utf-8')
@@ -187,24 +290,34 @@ router.delete('/:id', async (req: Request, res: Response) => {
   }
 })
 
-// GET /api/tags - List all unique tags
-router.get('/meta/tags', async (_req: Request, res: Response) => {
+// GET /api/tags - List all unique tags (optionally filtered by backlog)
+router.get('/meta/tags', async (req: Request, res: Response) => {
   try {
-    await ensureDirectories()
-
-    const files = await fs.readdir(BACKLOG_PATH)
-    const mdFiles = files.filter((f) => f.endsWith('.md'))
+    const vaultProject = req.query.backlog as string | undefined
+    const projectsToLoad = vaultProject
+      ? [vaultProject]
+      : await getVaultProjectsWithBacklogs()
 
     const allTags = new Set<string>()
 
-    await Promise.all(
-      mdFiles.map(async (filename) => {
-        const filepath = path.join(BACKLOG_PATH, filename)
-        const content = await fs.readFile(filepath, 'utf-8')
-        const ticket = parseTicketMarkdown(content, filename)
-        ticket.tags.forEach((tag) => allTags.add(tag))
-      })
-    )
+    for (const project of projectsToLoad) {
+      const backlogPath = getBacklogPath(project)
+      try {
+        const files = await fs.readdir(backlogPath)
+        const mdFiles = files.filter((f) => f.endsWith('.md'))
+
+        await Promise.all(
+          mdFiles.map(async (filename) => {
+            const filepath = path.join(backlogPath, filename)
+            const content = await fs.readFile(filepath, 'utf-8')
+            const ticket = parseTicketMarkdown(content, filename, project)
+            ticket.tags.forEach((tag) => allTags.add(tag))
+          })
+        )
+      } catch {
+        // Backlog doesn't exist, skip
+      }
+    }
 
     res.json(Array.from(allTags).sort())
   } catch (error) {
@@ -213,26 +326,36 @@ router.get('/meta/tags', async (_req: Request, res: Response) => {
   }
 })
 
-// GET /api/projects - List all unique projects
-router.get('/meta/projects', async (_req: Request, res: Response) => {
+// GET /api/projects - List all unique projects from tickets (optionally filtered by backlog)
+router.get('/meta/projects', async (req: Request, res: Response) => {
   try {
-    await ensureDirectories()
-
-    const files = await fs.readdir(BACKLOG_PATH)
-    const mdFiles = files.filter((f) => f.endsWith('.md'))
+    const vaultProject = req.query.backlog as string | undefined
+    const projectsToLoad = vaultProject
+      ? [vaultProject]
+      : await getVaultProjectsWithBacklogs()
 
     const allProjects = new Set<string>()
 
-    await Promise.all(
-      mdFiles.map(async (filename) => {
-        const filepath = path.join(BACKLOG_PATH, filename)
-        const content = await fs.readFile(filepath, 'utf-8')
-        const ticket = parseTicketMarkdown(content, filename)
-        if (ticket.project) {
-          allProjects.add(ticket.project)
-        }
-      })
-    )
+    for (const project of projectsToLoad) {
+      const backlogPath = getBacklogPath(project)
+      try {
+        const files = await fs.readdir(backlogPath)
+        const mdFiles = files.filter((f) => f.endsWith('.md'))
+
+        await Promise.all(
+          mdFiles.map(async (filename) => {
+            const filepath = path.join(backlogPath, filename)
+            const content = await fs.readFile(filepath, 'utf-8')
+            const ticket = parseTicketMarkdown(content, filename, project)
+            if (ticket.project) {
+              allProjects.add(ticket.project)
+            }
+          })
+        )
+      } catch {
+        // Backlog doesn't exist, skip
+      }
+    }
 
     res.json(Array.from(allProjects).sort())
   } catch (error) {

@@ -17,7 +17,7 @@ interface TicketFrontmatter {
 const DEFAULT_STATUS: TicketStatus = 'todo'
 const DEFAULT_PRIORITY: TicketPriority = 'medium'
 
-export function parseTicketMarkdown(content: string, filename: string): Ticket {
+export function parseTicketMarkdown(content: string, filename: string, backlog: string): Ticket {
   const { data, content: body } = matter(content)
   const frontmatter = data as TicketFrontmatter
 
@@ -79,6 +79,7 @@ export function parseTicketMarkdown(content: string, filename: string): Ticket {
     acceptanceCriteria,
     body: body.trim(),
     order: frontmatter.order,
+    backlog,
   }
 }
 

@@ -1,9 +1,19 @@
 import { useEffect, useRef } from 'react'
 import { useTicketStore } from '@/stores/ticketStore'
 
-export function SearchBar() {
+interface SearchBarProps {
+  value?: string
+  onChange?: (value: string) => void
+  placeholder?: string
+}
+
+export function SearchBar({ value, onChange, placeholder = 'Search tickets...' }: SearchBarProps) {
   const { searchQuery, setSearchQuery } = useTicketStore()
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Use props if provided, otherwise fall back to store
+  const currentValue = value !== undefined ? value : searchQuery
+  const handleChange = onChange || setSearchQuery
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -15,14 +25,14 @@ export function SearchBar() {
       }
       // Escape to clear and blur
       if (e.key === 'Escape' && document.activeElement === inputRef.current) {
-        setSearchQuery('')
+        handleChange('')
         inputRef.current?.blur()
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [setSearchQuery])
+  }, [handleChange])
 
   return (
     <div className="relative">
@@ -42,9 +52,9 @@ export function SearchBar() {
       <input
         ref={inputRef}
         type="text"
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        placeholder="Search tickets..."
+        value={currentValue}
+        onChange={(e) => handleChange(e.target.value)}
+        placeholder={placeholder}
         className="w-full pl-9 pr-16 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
       />
       <kbd className="absolute right-2 top-1/2 -translate-y-1/2 px-1.5 py-0.5 text-xs text-gray-400 bg-gray-100 rounded">

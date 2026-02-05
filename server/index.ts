@@ -12,17 +12,17 @@ app.use(cors())
 app.use(express.json())
 
 // Routes
-// Tags and projects routes are in the tickets router under /meta/*
+// Tags and labels routes are in the tickets router under /meta/*
 app.use('/api/tickets', ticketsRouter)
 app.use('/api/todos', todosRouter)
 
-// Map /api/tags and /api/projects to the tickets router meta routes
+// Map /api/tags and /api/labels to the tickets router meta routes
 app.use('/api/tags', (req, res, next) => {
   req.url = '/meta/tags' + (req.url === '/' ? '' : req.url)
   ticketsRouter(req, res, next)
 })
-app.use('/api/projects', (req, res, next) => {
-  req.url = '/meta/projects' + (req.url === '/' ? '' : req.url)
+app.use('/api/labels', (req, res, next) => {
+  req.url = '/meta/labels' + (req.url === '/' ? '' : req.url)
   ticketsRouter(req, res, next)
 })
 

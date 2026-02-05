@@ -1,4 +1,4 @@
-import { DragDropContext, DropResult } from '@hello-pangea/dnd'
+import { DragDropContext, DropResult, DragUpdate } from '@hello-pangea/dnd'
 import { Sidebar } from './components/Sidebar'
 import { TicketList } from './components/TicketList'
 import { DetailPanel } from './components/DetailPanel'
@@ -13,9 +13,23 @@ function App() {
   useTickets()
   useKeyboard()
 
-  const { mode, tickets, updateTicket, reorderTicket, getFilteredTickets, sortBy } = useTicketStore()
+  const { mode, tickets, updateTicket, reorderTicket, getFilteredTickets, sortBy, setDragDestination } = useTicketStore()
+
+  const handleDragUpdate = (update: DragUpdate) => {
+    if (update.destination) {
+      setDragDestination({
+        droppableId: update.destination.droppableId,
+        index: update.destination.index,
+      })
+    } else {
+      setDragDestination(null)
+    }
+  }
 
   const handleDragEnd = async (result: DropResult) => {
+    // Clear drag destination
+    setDragDestination(null)
+
     // Only handle drag and drop in tickets mode
     if (mode !== 'tickets') return
 
@@ -23,20 +37,20 @@ function App() {
 
     if (!destination) return
 
-    // Check if dropped on Inbox - remove project
+    // Check if dropped on Inbox - remove label
     if (destination.droppableId === 'view:inbox') {
-      await updateTicket(draggableId, { project: null })
+      await updateTicket(draggableId, { label: null })
       return
     }
 
-    // Check if dropped on a project in the sidebar
-    if (destination.droppableId.startsWith('project:')) {
-      const projectName = destination.droppableId.replace('project:', '')
-      await updateTicket(draggableId, { project: projectName })
+    // Check if dropped on a label in the sidebar
+    if (destination.droppableId.startsWith('label:')) {
+      const labelName = destination.droppableId.replace('label:', '')
+      await updateTicket(draggableId, { label: labelName })
       return
     }
 
-    // Handle ticket list reordering
+    // Handle ticket list reordering (original single list)
     if (destination.droppableId === 'ticket-list' && source.droppableId === 'ticket-list') {
       if (destination.index === source.index) return
 
@@ -62,6 +76,59 @@ function App() {
       }
 
       await reorderTicket(draggableId, newOrder)
+      return
+    }
+
+    // Handle status-sectioned list reordering (within same status or across statuses)
+    const statusDroppables = ['status:in-progress', 'status:todo', 'status:done']
+    if (statusDroppables.includes(source.droppableId) && statusDroppables.includes(destination.droppableId)) {
+      const statusMap: Record<string, TicketStatus> = {
+        'status:in-progress': 'in-progress',
+        'status:todo': 'todo',
+        'status:done': 'done',
+      }
+      const sourceStatus = statusMap[source.droppableId]
+      const destStatus = statusMap[destination.droppableId]
+      const isSameSection = source.droppableId === destination.droppableId
+
+      // If same section and same position, do nothing
+      if (isSameSection && destination.index === source.index) return
+
+      // Get tickets for destination status section (excluding the dragged ticket if moving within same section)
+      const destTickets = tickets
+        .filter(t => t.status === destStatus && (isSameSection ? t.id !== draggableId : true))
+        .sort((a, b) => {
+          const aOrder = a.order ?? Number.MAX_SAFE_INTEGER
+          const bOrder = b.order ?? Number.MAX_SAFE_INTEGER
+          if (aOrder !== bOrder) return aOrder - bOrder
+          return new Date(a.created).getTime() - new Date(b.created).getTime()
+        })
+
+      // Calculate new order based on destination position
+      let newOrder: number
+      const prevItem = destTickets[destination.index - 1]
+      const nextItem = destTickets[destination.index]
+
+      if (!prevItem && !nextItem) {
+        newOrder = 1
+      } else if (!prevItem && nextItem) {
+        newOrder = (nextItem.order ?? 1) - 1
+      } else if (prevItem && !nextItem) {
+        newOrder = (prevItem.order ?? destTickets.length) + 1
+      } else if (prevItem && nextItem) {
+        const prevOrder = prevItem.order ?? destination.index - 1
+        const nextOrder = nextItem.order ?? destination.index + 1
+        newOrder = (prevOrder + nextOrder) / 2
+      } else {
+        newOrder = destination.index + 1
+      }
+
+      // Update status if moving to different section, always update order
+      if (sourceStatus !== destStatus) {
+        await updateTicket(draggableId, { status: destStatus, order: newOrder })
+      } else {
+        await reorderTicket(draggableId, newOrder)
+      }
       return
     }
 
@@ -122,7 +189,7 @@ function App() {
   }
 
   return (
-    <DragDropContext onDragEnd={handleDragEnd}>
+    <DragDropContext onDragEnd={handleDragEnd} onDragUpdate={handleDragUpdate}>
       <div className="flex h-screen bg-white">
         <Sidebar />
         {mode === 'tickets' ? <TicketList /> : <TodoList />}

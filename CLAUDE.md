@@ -109,6 +109,7 @@ De vault path wijst naar de root folder die project subfolders bevat. Tickets wo
 
 ```markdown
 ---
+id: abc123xyz0
 status: todo | in-progress | done
 priority: low | medium | high | urgent
 tags:
@@ -117,7 +118,7 @@ tags:
 created: '2026-02-02T12:00:00.000Z'
 updated: '2026-02-02T14:30:00.000Z'
 dueDate: '2026-02-10'        # optioneel
-project: ProjectNaam         # optioneel
+label: LabelNaam             # optioneel
 order: 1.5                   # optioneel, voor manual sorting
 ---
 
@@ -131,6 +132,10 @@ Uitleg van wat er moet gebeuren.
 ## Acceptatiecriteria
 - [ ] Criterium 1
 - [ ] Criterium 2
+
+## Comments
+- **2026-02-03T14:30:00.000Z** Status update: backend implementatie gestart (Lennert)
+- **2026-02-02T10:15:00.000Z** Eerste analyse gedaan
 ```
 
 ## API Endpoints
@@ -145,7 +150,7 @@ Uitleg van wat er moet gebeuren.
 | PUT | `/api/tickets/:id` | Ticket updaten |
 | DELETE | `/api/tickets/:id` | Ticket verwijderen (archiveert in `{backlog}/backlog/archive/`) |
 | GET | `/api/tags?backlog=X` | Lijst unieke tags (optioneel per backlog) |
-| GET | `/api/projects?backlog=X` | Lijst unieke projecten (optioneel per backlog) |
+| GET | `/api/labels?backlog=X` | Lijst unieke labels (optioneel per backlog) |
 
 ### Todos
 | Method | Endpoint | Beschrijving |
@@ -190,14 +195,14 @@ De Zustand store (`ticketStore.ts`) beheert:
 - `selectedBacklog` - Huidig geselecteerde backlog (null = geen)
 - `tickets` - Alle geladen tickets voor geselecteerde backlog
 - `tags` - Unieke tags voor filtering
-- `projects` - Unieke projectnamen binnen tickets
+- `labels` - Unieke labelnamen binnen tickets
 - `selectedTicketId` - Huidig geselecteerde ticket
 - `activeView` - all/inbox/today/backlog/done
 - `displayMode` - list/board
 - `searchQuery` - Zoekterm
 - `sortBy` - Sorteer optie (manual/priority/updated/created/title/dueDate)
 - `selectedTags` - Actieve tag filters
-- `selectedProject` - Actief project filter (null = alle, "" = loose tickets)
+- `selectedLabel` - Actief label filter (null = alle, "" = loose tickets)
 
 ### Todo State
 - `todos` - Alle geladen todos
@@ -222,13 +227,13 @@ Let op: `undefined` values mogen niet in frontmatter objects - YAML kan deze nie
 `created` en `updated` worden opgeslagen als ISO 8601 timestamps (bijv. `2026-02-02T14:30:00.000Z`). In de UI wordt `updated` getoond als relatieve tijd ("2m ago", "1h ago", "yesterday", etc.) via de `formatRelativeTime()` helper in TicketItem en BoardView.
 
 ### Polling en Lokale State
-De app pollt elke 5 seconden voor updates. In `DetailPanel.tsx` wordt lokale form state (title, description, project, etc.) alleen gereset bij verandering van `selectedTicketId`, niet bij elke ticket update. Dit voorkomt dat de state wordt overschreven terwijl de gebruiker aan het typen is.
+De app pollt elke 5 seconden voor updates. In `DetailPanel.tsx` wordt lokale form state (title, description, label, etc.) alleen gereset bij verandering van `selectedTicketId`, niet bij elke ticket update. Dit voorkomt dat de state wordt overschreven terwijl de gebruiker aan het typen is.
 
 ### Drag & Drop Sorting
 Tickets kunnen handmatig gesorteerd worden via drag & drop in zowel list view als board view. Dit werkt alleen wanneer "Manual" sorting is geselecteerd in de dropdown. De volgorde wordt gepersisteerd via een `order` float in de frontmatter van elke ticket. Bij tussenvoeging wordt het gemiddelde van de buren berekend (bijv. 1.5 tussen 1 en 2). In board view kan je ook tickets tussen kolommen slepen om de status te wijzigen.
 
-### Drag & Drop naar Projecten
-Tickets kunnen naar projecten in de sidebar gesleept worden om ze aan een project toe te wijzen. Sleep naar Inbox om het project te verwijderen. Drop targets krijgen een blauwe highlight tijdens het slepen. De `DragDropContext` staat in `App.tsx` om cross-component drag & drop mogelijk te maken.
+### Drag & Drop naar Labels
+Tickets kunnen naar labels in de sidebar gesleept worden om ze aan een label toe te wijzen. Sleep naar Inbox om het label te verwijderen. Drop targets krijgen een blauwe highlight tijdens het slepen. De `DragDropContext` staat in `App.tsx` om cross-component drag & drop mogelijk te maken.
 
 ### Tag Sortering
 Tags worden altijd alfabetisch gesorteerd. Dit gebeurt in `server/lib/markdown.ts` bij het parsen, aanmaken en updaten van tickets.
@@ -257,7 +262,7 @@ Onbekende tags krijgen een neutrale grijze kleur. Nieuwe tags kunnen worden toeg
 Zowel list view als board view ondersteunen filtering op:
 - Zoekterm (titel, beschrijving, tags)
 - Tags (via sidebar)
-- Project (via sidebar)
+- Label (via sidebar)
 
 ### Filtering (Todos)
 Todo mode ondersteunt filtering op:
@@ -268,7 +273,7 @@ Todo mode ondersteunt filtering op:
 
 ### Ticket Views
 - **All Tickets** - Alle tickets
-- **Inbox** - Tickets zonder project (nog te triagen)
+- **Inbox** - Tickets zonder label (nog te triagen)
 - **In Progress** - Tickets met status "in-progress"
 - **Backlog** - Alle todo tickets
 - **Done** - Afgeronde tickets
@@ -280,15 +285,36 @@ Todo mode ondersteunt filtering op:
 - **Someday** - Todos zonder due date
 - **Done** - Afgeronde todos
 
-## Projects
+## Labels
 
-Tickets kunnen optioneel aan een project gekoppeld worden via het `project` veld in frontmatter. Projecten worden dynamisch afgeleid uit tickets - er zijn geen aparte project files.
+Tickets kunnen optioneel aan een label gekoppeld worden via het `label` veld in frontmatter. Labels worden dynamisch afgeleid uit tickets - er zijn geen aparte label files.
 
-- Projecten verschijnen in de sidebar met ticket counts
-- Bij aanmaken van een ticket binnen een project-filter wordt dat project automatisch overgenomen
-- Project kan bewerkt worden in de detail view (Enter of blur om op te slaan, Escape om te annuleren)
-- Sleep een ticket naar een project in de sidebar om het toe te wijzen
-- Sleep een ticket naar Inbox om het project te verwijderen
+- Labels verschijnen in de sidebar met ticket counts
+- Bij aanmaken van een ticket binnen een label-filter wordt dat label automatisch overgenomen
+- Label kan bewerkt worden in de detail view (Enter of blur om op te slaan, Escape om te annuleren)
+- Sleep een ticket naar een label in de sidebar om het toe te wijzen
+- Sleep een ticket naar Inbox om het label te verwijderen
+
+## Comments
+
+Tickets hebben een comments sectie voor het traceren van acties en notities. Comments worden opgeslagen in de markdown body onder een `## Comments` heading.
+
+- Comments worden weergegeven in chronologische volgorde (oudste eerst)
+- Elk comment heeft een timestamp die relatief wordt getoond (bijv. "2h ago", "3d ago")
+- Optioneel kan een auteur worden toegevoegd (wordt onthouden in localStorage)
+- Voeg een comment toe via het tekstveld onderaan de detail view
+- Comments kunnen individueel verwijderd worden (hover voor delete knop)
+- Druk Enter om een comment toe te voegen (Shift+Enter voor nieuwe regel)
+
+### Comment Formaat in Markdown
+
+```markdown
+## Comments
+- **2026-02-03T14:30:00.000Z** Status update: implementatie gestart (Lennert)
+- **2026-02-02T10:15:00.000Z** Eerste analyse gedaan
+```
+
+De auteur staat optioneel tussen haakjes aan het einde van de regel.
 
 ## Todo Mode
 

@@ -9,13 +9,13 @@ export function useTickets() {
     selectedBacklog,
     tickets,
     tags,
-    projects,
+    labels,
     isLoading,
     error,
     fetchBacklogs,
     fetchTickets,
     fetchTags,
-    fetchProjects,
+    fetchLabels,
     getFilteredTickets,
     // Todo state
     todos,
@@ -37,9 +37,9 @@ export function useTickets() {
     if (mode === 'tickets' && selectedBacklog) {
       fetchTickets()
       fetchTags()
-      fetchProjects()
+      fetchLabels()
     }
-  }, [mode, selectedBacklog, fetchTickets, fetchTags, fetchProjects])
+  }, [mode, selectedBacklog, fetchTickets, fetchTags, fetchLabels])
 
   // Fetch todo data when in todo mode
   useEffect(() => {
@@ -54,14 +54,14 @@ export function useTickets() {
       if (mode === 'tickets' && selectedBacklog) {
         fetchTickets()
         fetchTags()
-        fetchProjects()
+        fetchLabels()
       } else if (mode === 'todos') {
         fetchTodos()
       }
     }, 5000)
 
     return () => clearInterval(interval)
-  }, [mode, selectedBacklog, fetchTickets, fetchTags, fetchProjects, fetchTodos])
+  }, [mode, selectedBacklog, fetchTickets, fetchTags, fetchLabels, fetchTodos])
 
   return {
     // Ticket data
@@ -70,7 +70,7 @@ export function useTickets() {
     tickets,
     filteredTickets: getFilteredTickets(),
     tags,
-    projects,
+    labels,
     isLoading,
     error,
     refresh: fetchTickets,

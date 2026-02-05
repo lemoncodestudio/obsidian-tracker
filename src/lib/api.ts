@@ -66,10 +66,10 @@ export const api = {
     return handleResponse<string[]>(response)
   },
 
-  async getProjects(backlog?: string): Promise<string[]> {
+  async getLabels(backlog?: string): Promise<string[]> {
     const url = backlog
-      ? `${API_BASE}/projects?backlog=${encodeURIComponent(backlog)}`
-      : `${API_BASE}/projects`
+      ? `${API_BASE}/labels?backlog=${encodeURIComponent(backlog)}`
+      : `${API_BASE}/labels`
     const response = await fetch(url)
     return handleResponse<string[]>(response)
   },

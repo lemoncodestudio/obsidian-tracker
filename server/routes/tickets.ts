@@ -184,7 +184,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST /api/tickets - Create new ticket
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { title, status, priority, tags, project, source, description, acceptanceCriteria, backlog } = req.body
+    const { title, status, priority, tags, label, source, description, acceptanceCriteria, backlog } = req.body
 
     if (!title || typeof title !== 'string') {
       res.status(400).json({ message: 'Title is required' })
@@ -219,7 +219,7 @@ router.post('/', async (req: Request, res: Response) => {
       status,
       priority,
       tags,
-      project,
+      label,
       source,
       description,
       acceptanceCriteria,
@@ -326,15 +326,15 @@ router.get('/meta/tags', async (req: Request, res: Response) => {
   }
 })
 
-// GET /api/projects - List all unique projects from tickets (optionally filtered by backlog)
-router.get('/meta/projects', async (req: Request, res: Response) => {
+// GET /api/labels - List all unique labels from tickets (optionally filtered by backlog)
+router.get('/meta/labels', async (req: Request, res: Response) => {
   try {
     const vaultProject = req.query.backlog as string | undefined
     const projectsToLoad = vaultProject
       ? [vaultProject]
       : await getVaultProjectsWithBacklogs()
 
-    const allProjects = new Set<string>()
+    const allLabels = new Set<string>()
 
     for (const project of projectsToLoad) {
       const backlogPath = getBacklogPath(project)
@@ -347,8 +347,8 @@ router.get('/meta/projects', async (req: Request, res: Response) => {
             const filepath = path.join(backlogPath, filename)
             const content = await fs.readFile(filepath, 'utf-8')
             const ticket = parseTicketMarkdown(content, filename, project)
-            if (ticket.project) {
-              allProjects.add(ticket.project)
+            if (ticket.label) {
+              allLabels.add(ticket.label)
             }
           })
         )
@@ -357,10 +357,10 @@ router.get('/meta/projects', async (req: Request, res: Response) => {
       }
     }
 
-    res.json(Array.from(allProjects).sort())
+    res.json(Array.from(allLabels).sort())
   } catch (error) {
-    console.error('Error listing projects:', error)
-    res.status(500).json({ message: 'Failed to list projects' })
+    console.error('Error listing labels:', error)
+    res.status(500).json({ message: 'Failed to list labels' })
   }
 })
 

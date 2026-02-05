@@ -54,8 +54,12 @@ function formatRelativeTime(dateString: string): string {
   return date.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
 }
 
+function DropIndicator() {
+  return <div className="h-1 bg-blue-500 rounded-full mx-1 my-1" />
+}
+
 export function BoardView() {
-  const { tickets, selectedTags, selectedProject, searchQuery, selectTicket, selectedTicketId, sortBy } = useTicketStore()
+  const { tickets, selectedTags, selectedLabel, searchQuery, selectTicket, selectedTicketId, sortBy, dragDestination } = useTicketStore()
 
   // Filter by search query, tags, and project
   let filteredTickets = tickets
@@ -73,13 +77,13 @@ export function BoardView() {
     filteredTickets = filteredTickets.filter((t) => selectedTags.some((tag) => t.tags.includes(tag)))
   }
 
-  if (selectedProject !== null) {
-    if (selectedProject === '') {
-      // Show tickets without a project (loose tickets)
-      filteredTickets = filteredTickets.filter((t) => !t.project)
+  if (selectedLabel !== null) {
+    if (selectedLabel === '') {
+      // Show tickets without a label (loose tickets)
+      filteredTickets = filteredTickets.filter((t) => !t.label)
     } else {
-      // Show tickets with the selected project
-      filteredTickets = filteredTickets.filter((t) => t.project === selectedProject)
+      // Show tickets with the selected label
+      filteredTickets = filteredTickets.filter((t) => t.label === selectedLabel)
     }
   }
 
@@ -115,76 +119,84 @@ export function BoardView() {
             </div>
 
             <Droppable droppableId={column.id}>
-              {(provided, snapshot) => (
-                <div
-                  ref={provided.innerRef}
-                  {...provided.droppableProps}
-                  className={`flex-1 p-2 space-y-2 rounded-b-lg border border-t-0 border-gray-200 overflow-y-auto transition-colors ${
-                    snapshot.isDraggingOver ? 'bg-blue-50' : 'bg-gray-50'
-                  }`}
-                  style={{ minHeight: '200px' }}
-                >
-                  {getTicketsByStatus(column.id).map((ticket, index) => {
-                    const overdue = isOverdue(ticket.dueDate, ticket.status)
-                    return (
-                      <Draggable key={ticket.id} draggableId={ticket.id} index={index}>
-                        {(provided, snapshot) => (
-                          <div
-                            ref={provided.innerRef}
-                            {...provided.draggableProps}
-                            {...provided.dragHandleProps}
-                            onClick={() => selectTicket(ticket.id)}
-                            className={`p-3 rounded-lg shadow-sm border-l-4 cursor-pointer transition-shadow ${
-                              priorityColors[ticket.priority]
-                            } ${snapshot.isDragging ? 'shadow-lg' : 'hover:shadow-md'} ${
-                              selectedTicketId === ticket.id ? 'ring-2 ring-blue-500' : ''
-                            } ${overdue ? 'bg-red-50' : 'bg-white'}`}
-                          >
-                            <h4 className={`text-sm font-medium mb-1 ${
-                              ticket.status === 'done' ? 'text-gray-400 line-through' : 'text-gray-800'
-                            }`}>
-                              {ticket.title}
-                            </h4>
+              {(provided, snapshot) => {
+                const columnTickets = getTicketsByStatus(column.id)
+                return (
+                  <div
+                    ref={provided.innerRef}
+                    {...provided.droppableProps}
+                    className={`flex-1 p-2 space-y-2 rounded-b-lg border border-t-0 border-gray-200 overflow-y-auto transition-colors ${
+                      snapshot.isDraggingOver ? 'bg-blue-50' : 'bg-gray-50'
+                    }`}
+                    style={{ minHeight: '200px' }}
+                  >
+                    {columnTickets.map((ticket, index) => {
+                      const overdue = isOverdue(ticket.dueDate, ticket.status)
+                      return (
+                        <Draggable key={ticket.id} draggableId={ticket.id} index={index}>
+                          {(provided, snapshot) => (
+                            <>
+                              <div
+                                ref={provided.innerRef}
+                                {...provided.draggableProps}
+                                {...provided.dragHandleProps}
+                                onClick={() => selectTicket(ticket.id)}
+                                className={`p-3 rounded-lg shadow-sm border-l-4 cursor-pointer transition-shadow ${
+                                  priorityColors[ticket.priority]
+                                } ${snapshot.isDragging ? 'shadow-lg' : 'hover:shadow-md'} ${
+                                  selectedTicketId === ticket.id ? 'ring-2 ring-blue-500' : ''
+                                } ${overdue ? 'bg-red-50' : 'bg-white'}`}
+                              >
+                                <h4 className={`text-sm font-medium mb-1 ${
+                                  ticket.status === 'done' ? 'text-gray-400 line-through' : 'text-gray-800'
+                                }`}>
+                                  {ticket.title}
+                                </h4>
 
-                            {ticket.tags.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-2">
-                                {ticket.tags.slice(0, 2).map((tag) => (
-                                  <span
-                                    key={tag}
-                                    className={`px-1.5 py-0.5 text-xs rounded font-medium ${getTagClasses(tag)}`}
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                                {ticket.tags.length > 2 && (
-                                  <span className="text-xs text-gray-400">
-                                    +{ticket.tags.length - 2}
-                                  </span>
+                                {ticket.tags.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {ticket.tags.slice(0, 2).map((tag) => (
+                                      <span
+                                        key={tag}
+                                        className={`px-1.5 py-0.5 text-xs rounded font-medium ${getTagClasses(tag)}`}
+                                      >
+                                        {tag}
+                                      </span>
+                                    ))}
+                                    {ticket.tags.length > 2 && (
+                                      <span className="text-xs text-gray-400">
+                                        +{ticket.tags.length - 2}
+                                      </span>
+                                    )}
+                                  </div>
                                 )}
-                              </div>
-                            )}
 
-                            <div className="flex items-center justify-between mt-2 text-xs text-gray-400">
-                              <span className="capitalize">{ticket.priority}</span>
-                              {ticket.dueDate ? (
-                                <span className={`flex items-center gap-1 ${overdue ? 'text-red-600 font-medium' : ''}`}>
-                                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                                  </svg>
-                                  {formatDueDate(ticket.dueDate)}
-                                </span>
-                              ) : (
-                                <span>{formatRelativeTime(ticket.updated)}</span>
+                                <div className="flex items-center justify-between mt-2 text-xs text-gray-400">
+                                  <span className="capitalize">{ticket.priority}</span>
+                                  {ticket.dueDate ? (
+                                    <span className={`flex items-center gap-1 ${overdue ? 'text-red-600 font-medium' : ''}`}>
+                                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                                      </svg>
+                                      {formatDueDate(ticket.dueDate)}
+                                    </span>
+                                  ) : (
+                                    <span>{formatRelativeTime(ticket.updated)}</span>
+                                  )}
+                                </div>
+                              </div>
+                              {dragDestination?.droppableId === column.id && dragDestination.index === index && (
+                                <DropIndicator />
                               )}
-                            </div>
-                          </div>
-                        )}
-                      </Draggable>
-                    )
-                  })}
-                  {provided.placeholder}
-                </div>
-              )}
+                            </>
+                          )}
+                        </Draggable>
+                      )
+                    })}
+                    {provided.placeholder}
+                  </div>
+                )
+              }}
             </Droppable>
           </div>
         ))}

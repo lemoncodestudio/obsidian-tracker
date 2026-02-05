@@ -1,7 +1,32 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useTicketStore } from '@/stores/ticketStore'
-import type { TicketStatus, TicketPriority } from '@/types/ticket'
+import type { TicketStatus, TicketPriority, TicketComment } from '@/types/ticket'
+
+function generateCommentId(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  let id = ''
+  for (let i = 0; i < 10; i++) {
+    id += chars.charAt(Math.floor(Math.random() * chars.length))
+  }
+  return id
+}
+
+function formatCommentDate(timestamp: string): string {
+  const date = new Date(timestamp)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMins < 1) return 'just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
 
 const statusOptions: { value: TicketStatus; label: string }[] = [
   { value: 'todo', label: 'To Do' },
@@ -29,7 +54,7 @@ export function DetailPanel() {
     selectedTicketId,
     tickets,
     tags: allTags,
-    projects: allProjects,
+    labels: allLabels,
     selectTicket,
     updateTicket,
     deleteTicket,
@@ -54,13 +79,16 @@ export function DetailPanel() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [dueDate, setDueDate] = useState('')
-  const [project, setProject] = useState('')
+  const [label, setLabel] = useState('')
   const [newTag, setNewTag] = useState('')
   const [showTagSuggestions, setShowTagSuggestions] = useState(false)
-  const [showProjectSuggestions, setShowProjectSuggestions] = useState(false)
+  const [showLabelSuggestions, setShowLabelSuggestions] = useState(false)
   const [isArchiving, setIsArchiving] = useState(false)
+  const [newComment, setNewComment] = useState('')
+  const [commentAuthor, setCommentAuthor] = useState('')
   const tagInputRef = useRef<HTMLInputElement>(null)
-  const projectInputRef = useRef<HTMLInputElement>(null)
+  const labelInputRef = useRef<HTMLInputElement>(null)
+  const commentInputRef = useRef<HTMLTextAreaElement>(null)
 
   // Form state for todos
   const [todoText, setTodoText] = useState('')
@@ -77,7 +105,7 @@ export function DetailPanel() {
       setTitle(ticket.title)
       setDescription(ticket.description || '')
       setDueDate(ticket.dueDate || '')
-      setProject(ticket.project || '')
+      setLabel(ticket.label || '')
       setIsArchiving(false)
     }
   }, [selectedTicketId])
@@ -132,33 +160,33 @@ export function DetailPanel() {
     }
   }
 
-  const handleProjectSave = async () => {
-    if (ticket && project !== (ticket.project || '')) {
-      await updateTicket(ticket.id, { project: project || null })
+  const handleLabelSave = async () => {
+    if (ticket && label !== (ticket.label || '')) {
+      await updateTicket(ticket.id, { label: label || null })
     }
   }
 
-  const handleProjectClear = async () => {
-    setProject('')
+  const handleLabelClear = async () => {
+    setLabel('')
     if (ticket) {
-      await updateTicket(ticket.id, { project: null })
+      await updateTicket(ticket.id, { label: null })
     }
   }
 
-  const handleProjectKeyDown = (e: React.KeyboardEvent) => {
+  const handleLabelKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      handleProjectSave()
-      projectInputRef.current?.blur()
+      handleLabelSave()
+      labelInputRef.current?.blur()
     } else if (e.key === 'Escape') {
-      setProject(ticket?.project || '')
-      setShowProjectSuggestions(false)
-      projectInputRef.current?.blur()
+      setLabel(ticket?.label || '')
+      setShowLabelSuggestions(false)
+      labelInputRef.current?.blur()
     }
   }
 
-  const filteredProjectSuggestions = allProjects.filter(
-    (p) => p.toLowerCase().includes(project.toLowerCase()) && p !== project
+  const filteredLabelSuggestions = allLabels.filter(
+    (l) => l.toLowerCase().includes(label.toLowerCase()) && l !== label
   )
 
   const handleAddTag = async (tagToAdd: string) => {
@@ -202,6 +230,47 @@ export function DetailPanel() {
       } catch {
         setIsArchiving(false)
       }
+    }
+  }
+
+  const handleAddComment = async () => {
+    if (ticket && newComment.trim()) {
+      const author = commentAuthor.trim() || undefined
+      // Remember author for next time
+      if (author) {
+        localStorage.setItem('commentAuthor', author)
+      }
+      const comment: TicketComment = {
+        id: generateCommentId(),
+        text: newComment.trim(),
+        timestamp: new Date().toISOString(),
+        author,
+      }
+      const updatedComments = [...(ticket.comments || []), comment]
+      await updateTicket(ticket.id, { comments: updatedComments })
+      setNewComment('')
+    }
+  }
+
+  // Load saved author on mount
+  useEffect(() => {
+    const savedAuthor = localStorage.getItem('commentAuthor')
+    if (savedAuthor) {
+      setCommentAuthor(savedAuthor)
+    }
+  }, [])
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (ticket) {
+      const updatedComments = (ticket.comments || []).filter(c => c.id !== commentId)
+      await updateTicket(ticket.id, { comments: updatedComments })
+    }
+  }
+
+  const handleCommentKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleAddComment()
     }
   }
 
@@ -400,31 +469,31 @@ export function DetailPanel() {
                     </div>
 
                     <div className="flex items-center gap-4">
-                      <label className="text-sm text-gray-500 w-20">Project</label>
+                      <label className="text-sm text-gray-500 w-20">Label</label>
                       <div className="flex-1 relative">
                         <div className="flex items-center gap-2">
                           <input
-                            ref={projectInputRef}
+                            ref={labelInputRef}
                             type="text"
-                            value={project}
+                            value={label}
                             onChange={(e) => {
-                              setProject(e.target.value)
-                              setShowProjectSuggestions(true)
+                              setLabel(e.target.value)
+                              setShowLabelSuggestions(true)
                             }}
-                            onFocus={() => setShowProjectSuggestions(true)}
+                            onFocus={() => setShowLabelSuggestions(true)}
                             onBlur={() => {
-                              setTimeout(() => setShowProjectSuggestions(false), 150)
-                              handleProjectSave()
+                              setTimeout(() => setShowLabelSuggestions(false), 150)
+                              handleLabelSave()
                             }}
-                            onKeyDown={handleProjectKeyDown}
-                            placeholder="No project"
+                            onKeyDown={handleLabelKeyDown}
+                            placeholder="No label"
                             className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                           />
-                          {project && (
+                          {label && (
                             <button
-                              onClick={handleProjectClear}
+                              onClick={handleLabelClear}
                               className="text-gray-400 hover:text-gray-600 p-1"
-                              title="Clear project"
+                              title="Clear label"
                             >
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -432,21 +501,21 @@ export function DetailPanel() {
                             </button>
                           )}
                         </div>
-                        {showProjectSuggestions && filteredProjectSuggestions.length > 0 && (
+                        {showLabelSuggestions && filteredLabelSuggestions.length > 0 && (
                           <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-32 overflow-y-auto">
-                            {filteredProjectSuggestions.map((p) => (
+                            {filteredLabelSuggestions.map((l) => (
                               <button
-                                key={p}
+                                key={l}
                                 onClick={async () => {
-                                  setProject(p)
-                                  setShowProjectSuggestions(false)
+                                  setLabel(l)
+                                  setShowLabelSuggestions(false)
                                   if (ticket) {
-                                    await updateTicket(ticket.id, { project: p })
+                                    await updateTicket(ticket.id, { label: l })
                                   }
                                 }}
                                 className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50"
                               >
-                                {p}
+                                {l}
                               </button>
                             ))}
                           </div>
@@ -539,6 +608,80 @@ export function DetailPanel() {
                         </ul>
                       </div>
                     )}
+
+                    {/* Comments Section */}
+                    <div className="pt-4 border-t border-gray-200">
+                      <label className="block text-sm text-gray-500 mb-3">Comments</label>
+
+                      {/* Existing comments */}
+                      {ticket.comments && ticket.comments.length > 0 && (
+                        <div className="space-y-3 mb-4">
+                          {ticket.comments.map((comment) => (
+                            <div
+                              key={comment.id}
+                              className="group bg-gray-50 rounded-lg px-3 py-2"
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm text-gray-700 whitespace-pre-wrap flex-1">
+                                  {comment.text}
+                                </p>
+                                <button
+                                  onClick={() => handleDeleteComment(comment.id)}
+                                  className="text-gray-300 hover:text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                                  title="Delete comment"
+                                >
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                  </svg>
+                                </button>
+                              </div>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-xs text-gray-400">
+                                  {formatCommentDate(comment.timestamp)}
+                                </span>
+                                {comment.author && (
+                                  <>
+                                    <span className="text-xs text-gray-300">•</span>
+                                    <span className="text-xs text-gray-500 font-medium">
+                                      {comment.author}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Add comment input */}
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <textarea
+                            ref={commentInputRef}
+                            value={newComment}
+                            onChange={(e) => setNewComment(e.target.value)}
+                            onKeyDown={handleCommentKeyDown}
+                            rows={2}
+                            className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                            placeholder="Add a comment..."
+                          />
+                          <button
+                            onClick={handleAddComment}
+                            disabled={!newComment.trim()}
+                            className="self-end px-3 py-2 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            Add
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={commentAuthor}
+                          onChange={(e) => setCommentAuthor(e.target.value)}
+                          className="w-full text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Your name (optional)"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </>
               )}

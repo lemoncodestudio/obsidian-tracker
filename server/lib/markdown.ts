@@ -1,5 +1,5 @@
 import matter from 'gray-matter'
-import type { Ticket, TicketStatus, TicketPriority } from '../../src/types/ticket'
+import type { Ticket, TicketStatus, TicketPriority, TicketComment } from '../../src/types/ticket'
 
 interface TicketFrontmatter {
   id?: string
@@ -9,7 +9,7 @@ interface TicketFrontmatter {
   created?: string
   updated?: string
   dueDate?: string
-  project?: string
+  label?: string
   archivedAt?: string
   order?: number
 }
@@ -45,6 +45,41 @@ export function parseTicketMarkdown(content: string, filename: string, backlog: 
       .filter(Boolean)
   }
 
+  // Extract comments
+  const commentsMatch = body.match(/##\s*(?:Comments|Opmerkingen)\s*\n([\s\S]*?)(?=\n##|$)/i)
+  let comments: TicketComment[] | undefined
+  if (commentsMatch) {
+    const commentsText = commentsMatch[1]
+    // Parse format: - **2026-02-03T14:30:00.000Z** Comment text here (Author Name)
+    const commentLines = commentsText.split('\n').filter(line => line.match(/^-\s*\*\*/))
+    comments = commentLines.map(line => {
+      const match = line.match(/^-\s*\*\*(.+?)\*\*\s*(.*)$/)
+      if (match) {
+        let text = match[2].trim()
+        let author: string | undefined
+
+        // Extract author from parentheses at the end
+        const authorMatch = text.match(/\(([^)]+)\)$/)
+        if (authorMatch) {
+          author = authorMatch[1].trim()
+          text = text.slice(0, -authorMatch[0].length).trim()
+        }
+
+        return {
+          id: generateId(),
+          timestamp: match[1],
+          text,
+          author
+        }
+      }
+      return null
+    }).filter((c): c is TicketComment => c !== null)
+
+    if (comments.length === 0) {
+      comments = undefined
+    }
+  }
+
   const now = new Date().toISOString()
 
   // Convert Date objects to strings if needed (preserves time if present)
@@ -73,10 +108,11 @@ export function parseTicketMarkdown(content: string, filename: string, backlog: 
     created: formatDateTime(frontmatter.created),
     updated: formatDateTime(frontmatter.updated),
     dueDate: formatOptionalDate(frontmatter.dueDate),
-    project: frontmatter.project,
+    label: frontmatter.label,
     source,
     description,
     acceptanceCriteria,
+    comments,
     body: body.trim(),
     order: frontmatter.order,
     backlog,
@@ -100,9 +136,9 @@ export function serializeTicketMarkdown(ticket: Partial<Ticket> & { title: strin
     frontmatter.dueDate = ticket.dueDate
   }
 
-  // Only add project if it's defined (YAML can't serialize undefined)
-  if (ticket.project) {
-    frontmatter.project = ticket.project
+  // Only add label if it's defined (YAML can't serialize undefined)
+  if (ticket.label) {
+    frontmatter.label = ticket.label
   }
 
   // Only add order if it's defined
@@ -126,13 +162,23 @@ export function serializeTicketMarkdown(ticket: Partial<Ticket> & { title: strin
     body += '\n'
   }
 
+  if (ticket.comments && ticket.comments.length > 0) {
+    body += `\n## Comments\n`
+    body += ticket.comments.map(c => {
+      const authorSuffix = c.author ? ` (${c.author})` : ''
+      return `- **${c.timestamp}** ${c.text}${authorSuffix}`
+    }).join('\n')
+    body += '\n'
+  }
+
   return matter.stringify(body, frontmatter)
 }
 
 interface TicketUpdates extends Partial<Ticket> {
   archivedAt?: string
-  project?: string | null
+  label?: string | null
   order?: number
+  comments?: TicketComment[]
 }
 
 export function updateTicketMarkdown(
@@ -160,11 +206,11 @@ export function updateTicketMarkdown(
       newFrontmatter.dueDate = updates.dueDate
     }
   }
-  if (updates.project !== undefined) {
-    if (updates.project === null || updates.project === '') {
-      delete newFrontmatter.project
+  if (updates.label !== undefined) {
+    if (updates.label === null || updates.label === '') {
+      delete newFrontmatter.label
     } else {
-      newFrontmatter.project = updates.project
+      newFrontmatter.label = updates.label
     }
   }
   if (updates.order !== undefined) {
@@ -188,6 +234,29 @@ export function updateTicketMarkdown(
       const titleEndIndex = newBody.search(/\n/)
       const insertPoint = titleEndIndex !== -1 ? titleEndIndex + 1 : newBody.length
       newBody = newBody.slice(0, insertPoint) + `\n## Beschrijving\n${updates.description}\n` + newBody.slice(insertPoint)
+    }
+  }
+
+  // Update comments if changed
+  if (updates.comments !== undefined) {
+    const commentsRegex = /##\s*(?:Comments|Opmerkingen)\s*\n[\s\S]*?(?=\n##|$)/i
+    const commentsSection = updates.comments.length > 0
+      ? `## Comments\n${updates.comments.map(c => {
+          const authorSuffix = c.author ? ` (${c.author})` : ''
+          return `- **${c.timestamp}** ${c.text}${authorSuffix}`
+        }).join('\n')}\n`
+      : ''
+
+    if (commentsRegex.test(newBody)) {
+      if (commentsSection) {
+        newBody = newBody.replace(commentsRegex, commentsSection)
+      } else {
+        // Remove empty comments section
+        newBody = newBody.replace(commentsRegex, '')
+      }
+    } else if (commentsSection) {
+      // Add comments section at the end
+      newBody = newBody.trimEnd() + '\n\n' + commentsSection
     }
   }
 

@@ -4,10 +4,10 @@ import { useTicketStore } from '@/stores/ticketStore'
 
 export function CreateTicket() {
   const [title, setTitle] = useState('')
-  const [project, setProject] = useState('')
-  const [showProjectInput, setShowProjectInput] = useState(false)
+  const [label, setLabel] = useState('')
+  const [showLabelInput, setShowLabelInput] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
-  const { createTicket, projects, selectedProject } = useTicketStore()
+  const { createTicket, labels, selectedLabel } = useTicketStore()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -15,18 +15,18 @@ export function CreateTicket() {
 
     setIsCreating(true)
     try {
-      // Use selectedProject if it's a specific project (not null or empty string for "Loose")
-      const ticketProject = project.trim() || (selectedProject && selectedProject !== '' ? selectedProject : undefined)
+      // Use selectedLabel if it's a specific label (not null or empty string for "Loose")
+      const ticketLabel = label.trim() || (selectedLabel && selectedLabel !== '' ? selectedLabel : undefined)
       await createTicket({
         title: title.trim(),
         status: 'todo',
         priority: 'medium',
         tags: [],
-        project: ticketProject,
+        label: ticketLabel,
       })
       setTitle('')
-      setProject('')
-      setShowProjectInput(false)
+      setLabel('')
+      setShowLabelInput(false)
     } catch (error) {
       console.error('Failed to create ticket:', error)
     } finally {
@@ -57,15 +57,15 @@ export function CreateTicket() {
           <>
             <button
               type="button"
-              onClick={() => setShowProjectInput(!showProjectInput)}
+              onClick={() => setShowLabelInput(!showLabelInput)}
               className={`px-2 py-1 text-xs rounded-lg border transition-colors ${
-                project || (selectedProject && selectedProject !== '')
+                label || (selectedLabel && selectedLabel !== '')
                   ? 'border-blue-300 text-blue-600 bg-blue-50'
                   : 'border-gray-200 text-gray-400 hover:border-gray-300'
               }`}
-              title="Set project"
+              title="Set label"
             >
-              # {project || (selectedProject && selectedProject !== '' ? selectedProject : 'Project')}
+              # {label || (selectedLabel && selectedLabel !== '' ? selectedLabel : 'Label')}
             </button>
             <motion.button
               initial={{ opacity: 0, scale: 0.8 }}
@@ -79,19 +79,19 @@ export function CreateTicket() {
           </>
         )}
       </div>
-      {showProjectInput && title.trim() && (
+      {showLabelInput && title.trim() && (
         <div className="ml-8 mt-2">
           <input
             type="text"
-            value={project}
-            onChange={(e) => setProject(e.target.value)}
-            placeholder="Project name..."
-            list="project-suggestions"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder="Label name..."
+            list="label-suggestions"
             className="text-sm border border-gray-200 rounded-lg px-2 py-1 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
           />
-          <datalist id="project-suggestions">
-            {projects.map((p) => (
-              <option key={p} value={p} />
+          <datalist id="label-suggestions">
+            {labels.map((l) => (
+              <option key={l} value={l} />
             ))}
           </datalist>
         </div>

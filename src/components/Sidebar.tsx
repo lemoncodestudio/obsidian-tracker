@@ -45,9 +45,9 @@ export function Sidebar() {
     activeView,
     setActiveView,
     tickets,
-    projects,
-    selectedProject,
-    setSelectedProject,
+    labels,
+    selectedLabel,
+    setSelectedLabel,
     // Todo state
     activeTodoView,
     setActiveTodoView,
@@ -60,17 +60,17 @@ export function Sidebar() {
   // Ticket counts
   const getTicketCounts = () => ({
     all: tickets.length,
-    inbox: tickets.filter((t) => !t.project && t.status !== 'done').length,
+    inbox: tickets.filter((t) => !t.label && t.status !== 'done').length,
     today: tickets.filter((t) => t.status === 'in-progress').length,
     backlog: tickets.filter((t) => t.status === 'todo').length,
     done: tickets.filter((t) => t.status === 'done').length,
   })
 
-  const getTicketProjectCounts = () => {
+  const getTicketLabelCounts = () => {
     const counts: Record<string, number> = {}
     tickets.forEach((t) => {
-      if (t.project) {
-        counts[t.project] = (counts[t.project] || 0) + 1
+      if (t.label) {
+        counts[t.label] = (counts[t.label] || 0) + 1
       }
     })
     return counts
@@ -111,7 +111,7 @@ export function Sidebar() {
   }
 
   const ticketCounts = getTicketCounts()
-  const ticketProjectCounts = getTicketProjectCounts()
+  const ticketLabelCounts = getTicketLabelCounts()
   const todoCounts = getTodoCounts()
   const todoProjectCounts = getTodoProjectCounts()
 
@@ -119,30 +119,30 @@ export function Sidebar() {
   const views = mode === 'tickets' ? ticketViews : todoViews
   const currentActiveView = mode === 'tickets' ? activeView : activeTodoView
   // For todos, only show folders that have open todos
-  const currentProjects = mode === 'tickets'
-    ? projects
+  const currentLabels = mode === 'tickets'
+    ? labels
     : todoProjects.filter(p => todoProjectCounts[p] > 0)
-  const currentSelectedProject = mode === 'tickets' ? selectedProject : selectedTodoProject
-  const currentProjectCounts = mode === 'tickets' ? ticketProjectCounts : todoProjectCounts
+  const currentSelectedLabel = mode === 'tickets' ? selectedLabel : selectedTodoProject
+  const currentLabelCounts = mode === 'tickets' ? ticketLabelCounts : todoProjectCounts
   const counts = mode === 'tickets' ? ticketCounts : todoCounts
 
   const handleViewClick = (viewId: string) => {
     if (mode === 'tickets') {
       setActiveView(viewId as ViewType)
-      setSelectedProject(null)
+      setSelectedLabel(null)
     } else {
       setActiveTodoView(viewId as TodoViewType)
       setSelectedTodoProject(null)
     }
   }
 
-  const handleProjectClick = (project: string) => {
+  const handleLabelClick = (label: string) => {
     if (mode === 'tickets') {
       setActiveView('all')
-      setSelectedProject(project)
+      setSelectedLabel(label)
     } else {
       setActiveTodoView('all')
-      setSelectedTodoProject(project)
+      setSelectedTodoProject(label)
     }
   }
 
@@ -188,7 +188,7 @@ export function Sidebar() {
                         className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
                           snapshot.isDraggingOver
                             ? 'bg-blue-100 ring-2 ring-blue-400'
-                            : currentActiveView === view.id && currentSelectedProject === null
+                            : currentActiveView === view.id && currentSelectedLabel === null
                             ? 'bg-sidebar-active text-gray-900 font-medium'
                             : 'text-gray-600 hover:bg-sidebar-hover'
                         }`}
@@ -213,7 +213,7 @@ export function Sidebar() {
                   whileTap={{ scale: 0.99 }}
                   onClick={() => handleViewClick(view.id)}
                   className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
-                    currentActiveView === view.id && currentSelectedProject === null
+                    currentActiveView === view.id && currentSelectedLabel === null
                       ? 'bg-sidebar-active text-gray-900 font-medium'
                       : 'text-gray-600 hover:bg-sidebar-hover'
                   }`}
@@ -233,16 +233,16 @@ export function Sidebar() {
           ))}
         </ul>
 
-        {currentProjects.length > 0 && (
+        {currentLabels.length > 0 && (
           <div className="mt-6">
             <h3 className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-              {mode === 'tickets' ? 'Projects' : 'Labels'}
+              Labels
             </h3>
             <ul className="space-y-1">
-              {currentProjects.map((project) => (
-                <li key={project}>
+              {currentLabels.map((label) => (
+                <li key={label}>
                   {mode === 'tickets' ? (
-                    <Droppable droppableId={`project:${project}`}>
+                    <Droppable droppableId={`label:${label}`}>
                       {(provided, snapshot) => (
                         <div
                           ref={provided.innerRef}
@@ -251,22 +251,22 @@ export function Sidebar() {
                           <motion.button
                             whileHover={{ scale: 1.01 }}
                             whileTap={{ scale: 0.99 }}
-                            onClick={() => handleProjectClick(project)}
+                            onClick={() => handleLabelClick(label)}
                             className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
                               snapshot.isDraggingOver
                                 ? 'bg-blue-100 ring-2 ring-blue-400'
-                                : currentSelectedProject === project
+                                : currentSelectedLabel === label
                                 ? 'bg-sidebar-active text-gray-900 font-medium'
                                 : 'text-gray-600 hover:bg-sidebar-hover'
                             }`}
                           >
                             <span className="flex items-center gap-2">
                               <span className="text-gray-400">#</span>
-                              <span className="truncate">{project}</span>
+                              <span className="truncate">{label}</span>
                             </span>
-                            {currentProjectCounts[project] > 0 && (
+                            {currentLabelCounts[label] > 0 && (
                               <span className="text-xs text-gray-400">
-                                {currentProjectCounts[project]}
+                                {currentLabelCounts[label]}
                               </span>
                             )}
                           </motion.button>
@@ -278,20 +278,20 @@ export function Sidebar() {
                     <motion.button
                       whileHover={{ scale: 1.01 }}
                       whileTap={{ scale: 0.99 }}
-                      onClick={() => handleProjectClick(project)}
+                      onClick={() => handleLabelClick(label)}
                       className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
-                        currentSelectedProject === project
+                        currentSelectedLabel === label
                           ? 'bg-sidebar-active text-gray-900 font-medium'
                           : 'text-gray-600 hover:bg-sidebar-hover'
                       }`}
                     >
                       <span className="flex items-center gap-2">
                         <span className="text-gray-400">📁</span>
-                        <span className="truncate">{project}</span>
+                        <span className="truncate">{label}</span>
                       </span>
-                      {currentProjectCounts[project] > 0 && (
+                      {currentLabelCounts[label] > 0 && (
                         <span className="text-xs text-gray-400">
-                          {currentProjectCounts[project]}
+                          {currentLabelCounts[label]}
                         </span>
                       )}
                     </motion.button>

@@ -14,14 +14,17 @@ interface TicketState {
   selectedBacklog: string | null  // Currently selected backlog (null = none selected)
   tickets: Ticket[]
   tags: string[]
-  projects: string[]
+  labels: string[]
   selectedTicketId: string | null
   activeView: ViewType
   displayMode: DisplayMode
   selectedTags: string[]
-  selectedProject: string | null // null = all, "" = loose tickets (no project)
+  selectedLabel: string | null // null = all, "" = loose tickets (no label)
   searchQuery: string
   sortBy: SortOption
+  hideDone: boolean
+  groupByStatus: boolean
+  dragDestination: { droppableId: string; index: number } | null
   isLoading: boolean
   error: string | null
 
@@ -47,7 +50,7 @@ interface TicketState {
   setSelectedBacklog: (backlog: string | null) => void
   fetchTickets: () => Promise<void>
   fetchTags: () => Promise<void>
-  fetchProjects: () => Promise<void>
+  fetchLabels: () => Promise<void>
   createTicket: (data: TicketCreate) => Promise<Ticket>
   updateTicket: (id: string, data: TicketUpdate) => Promise<void>
   deleteTicket: (id: string) => Promise<void>
@@ -58,8 +61,11 @@ interface TicketState {
   setSortBy: (sort: SortOption) => void
   toggleTag: (tag: string) => void
   clearSelectedTags: () => void
-  setSelectedProject: (project: string | null) => void
+  setSelectedLabel: (label: string | null) => void
   reorderTicket: (ticketId: string, newOrder: number) => Promise<void>
+  setHideDone: (hide: boolean) => void
+  setGroupByStatus: (group: boolean) => void
+  setDragDestination: (dest: { droppableId: string; index: number } | null) => void
 
   // Todo actions
   fetchTodos: () => Promise<void>
@@ -90,14 +96,17 @@ export const useTicketStore = create<TicketState>((set, get) => ({
   selectedBacklog: null,
   tickets: [],
   tags: [],
-  projects: [],
+  labels: [],
   selectedTicketId: null,
   activeView: 'all',
   displayMode: 'list',
   selectedTags: [],
-  selectedProject: null,
+  selectedLabel: null,
   searchQuery: '',
   sortBy: 'manual',
+  hideDone: false,
+  groupByStatus: true,
+  dragDestination: null,
   isLoading: false,
   error: null,
 
@@ -141,7 +150,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       selectedBacklog: backlog,
       // Reset ticket-specific state when switching backlogs
       selectedTicketId: null,
-      selectedProject: null,
+      selectedLabel: null,
       selectedTags: [],
       searchQuery: '',
     })
@@ -176,17 +185,17 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     }
   },
 
-  fetchProjects: async () => {
+  fetchLabels: async () => {
     const { selectedBacklog } = get()
     if (!selectedBacklog) {
-      set({ projects: [] })
+      set({ labels: [] })
       return
     }
     try {
-      const projects = await api.getProjects(selectedBacklog)
-      set({ projects })
+      const labels = await api.getLabels(selectedBacklog)
+      set({ labels })
     } catch (error) {
-      console.error('Failed to fetch projects:', error)
+      console.error('Failed to fetch labels:', error)
     }
   },
 
@@ -207,7 +216,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     const optimisticData = {
       ...data,
       dueDate: data.dueDate === null ? undefined : data.dueDate,
-      project: data.project === null ? undefined : data.project,
+      label: data.label === null ? undefined : data.label,
     }
     set((state) => ({
       tickets: state.tickets.map((t) =>
@@ -274,8 +283,8 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     set({ selectedTags: [] })
   },
 
-  setSelectedProject: (project: string | null) => {
-    set({ selectedProject: project })
+  setSelectedLabel: (label: string | null) => {
+    set({ selectedLabel: label })
   },
 
   reorderTicket: async (ticketId: string, newOrder: number) => {
@@ -294,6 +303,18 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       set({ tickets: previousTickets })
       throw error
     }
+  },
+
+  setHideDone: (hide: boolean) => {
+    set({ hideDone: hide })
+  },
+
+  setGroupByStatus: (group: boolean) => {
+    set({ groupByStatus: group })
+  },
+
+  setDragDestination: (dest: { droppableId: string; index: number } | null) => {
+    set({ dragDestination: dest })
   },
 
   // Todo actions
@@ -432,7 +453,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
 
   // Computed
   getFilteredTickets: () => {
-    const { tickets, activeView, selectedTags, selectedProject, searchQuery, sortBy } = get()
+    const { tickets, activeView, selectedTags, selectedLabel, searchQuery, sortBy, hideDone } = get()
 
     let filtered = tickets
 
@@ -449,7 +470,7 @@ export const useTicketStore = create<TicketState>((set, get) => ({
     // Filter by view
     switch (activeView) {
       case 'inbox':
-        filtered = filtered.filter((t) => !t.project && t.status !== 'done')
+        filtered = filtered.filter((t) => !t.label && t.status !== 'done')
         break
       case 'today':
         filtered = filtered.filter((t) => t.status === 'in-progress')
@@ -465,14 +486,14 @@ export const useTicketStore = create<TicketState>((set, get) => ({
         break
     }
 
-    // Filter by project
-    if (selectedProject !== null) {
-      if (selectedProject === '') {
-        // Show tickets without a project (loose tickets)
-        filtered = filtered.filter((t) => !t.project)
+    // Filter by label
+    if (selectedLabel !== null) {
+      if (selectedLabel === '') {
+        // Show tickets without a label (loose tickets)
+        filtered = filtered.filter((t) => !t.label)
       } else {
-        // Show tickets with the selected project
-        filtered = filtered.filter((t) => t.project === selectedProject)
+        // Show tickets with the selected label
+        filtered = filtered.filter((t) => t.label === selectedLabel)
       }
     }
 
@@ -481,17 +502,34 @@ export const useTicketStore = create<TicketState>((set, get) => ({
       filtered = filtered.filter((t) => selectedTags.some((tag) => t.tags.includes(tag)))
     }
 
-    // Sort
+    // Hide done tickets if toggle is on (only in 'all' view)
+    if (hideDone && activeView === 'all') {
+      filtered = filtered.filter((t) => t.status !== 'done')
+    }
+
+    // Sort within status groups for manual sorting in 'all' view
     const priorityOrder = { urgent: 0, high: 1, medium: 2, low: 3 }
+    const statusOrder = { 'in-progress': 0, 'todo': 1, 'done': 2 }
+
+    // Helper to sort by manual order
+    const sortByManualOrder = (a: Ticket, b: Ticket) => {
+      const aOrder = a.order ?? Number.MAX_SAFE_INTEGER
+      const bOrder = b.order ?? Number.MAX_SAFE_INTEGER
+      if (aOrder !== bOrder) return aOrder - bOrder
+      return new Date(a.created).getTime() - new Date(b.created).getTime()
+    }
+
     return filtered.sort((a, b) => {
+      // For 'all' view with manual sorting, group by status first
+      if (activeView === 'all' && sortBy === 'manual') {
+        const statusDiff = statusOrder[a.status] - statusOrder[b.status]
+        if (statusDiff !== 0) return statusDiff
+        return sortByManualOrder(a, b)
+      }
+
       switch (sortBy) {
         case 'manual':
-          // Sort by order field, tickets without order go to end
-          const aOrder = a.order ?? Number.MAX_SAFE_INTEGER
-          const bOrder = b.order ?? Number.MAX_SAFE_INTEGER
-          if (aOrder !== bOrder) return aOrder - bOrder
-          // Fallback to created date for tickets without order
-          return new Date(a.created).getTime() - new Date(b.created).getTime()
+          return sortByManualOrder(a, b)
         case 'priority':
           const priorityDiff = priorityOrder[a.priority] - priorityOrder[b.priority]
           if (priorityDiff !== 0) return priorityDiff
